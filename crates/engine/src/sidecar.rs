@@ -502,10 +502,10 @@ pub fn read_packet(original: &str, kind: MediaKind, naming: SidecarNaming) -> Op
 /// Photo ids touched by an op (for auto-write).
 pub(crate) fn op_photos(op: &Op, out: &mut Vec<PhotoId>) {
     match op {
-        Op::SetRating { id, .. } | Op::SetFlag { id, .. } | Op::SetLabel { id, .. } | Op::SetDevelop { id, .. } | Op::SetMeta { id, .. } => {
-            if !out.contains(id) {
-                out.push(*id);
-            }
+        Op::SetRating { id, .. } | Op::SetFlag { id, .. } | Op::SetLabel { id, .. } | Op::SetDevelop { id, .. } | Op::SetMeta { id, .. }
+            if !out.contains(id) =>
+        {
+            out.push(*id);
         }
         Op::Batch { ops } => ops.iter().for_each(|o| op_photos(o, out)),
         _ => {}

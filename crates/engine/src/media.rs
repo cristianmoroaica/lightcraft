@@ -1525,7 +1525,7 @@ impl crate::Session {
     /// says and what a smart preview renders with. Only for raws edited in Kelvin.
     fn learn_as_shot_wb(&mut self, id: PhotoId, info: &SourceInfo) {
         let Some(p) = self.catalog.photo(id) else { return };
-        if !(info.raw && !info.relative_wb && p.develops_raw() && !p.relative_wb()) {
+        if !info.raw || info.relative_wb || !p.develops_raw() || p.relative_wb() {
             return;
         }
         let read = (info.as_shot_temp, info.as_shot_tint);

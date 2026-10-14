@@ -147,7 +147,7 @@ pub fn legacy_to_kelvin(temp: f64, tint: f64, as_shot: (f64, f64)) -> (f64, f64)
 /// edited on a rendered photo or a raw without matrices never pass for Kelvin when pasted onto one that has them.
 pub fn normalize_wb(d: &mut DevelopSettings, info: &SourceInfo) {
     use lightcraft_develop::{WbMode, WbScale};
-    if !(info.raw && !info.relative_wb) {
+    if !info.raw || info.relative_wb {
         d.wb.scale = WbScale::Legacy;
         return;
     }

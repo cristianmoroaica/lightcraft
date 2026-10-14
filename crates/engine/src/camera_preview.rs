@@ -136,7 +136,7 @@ fn dng_colour(tags: &ColorData, t: &CameraTransform, look: Option<&CameraLook>) 
     // into the baseline exposure
     let white = m.apply([1.0; 3]);
     let k = (white[0] + white[1] + white[2]) / 3.0;
-    if !(k.is_finite() && k > 1e-6) || !t.wb.iter().all(|w| w.is_finite() && *w > 0.0) {
+    if !(k.is_finite() && k > 1e-6 && t.wb.iter().all(|w| w.is_finite() && *w > 0.0)) {
         return None;
     }
     let m = Mat3(m.0.map(|r| r.map(|v| v / k)));

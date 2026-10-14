@@ -780,7 +780,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // the render failed while a stand-in is up: what is on screen is all there will be (also while
     // a library change retries it)
     let failed = (!rendering
-        && !(show_before && !split)
+        && (!show_before || split)
         && !matches!(shown, "render" | "none" | "hover")
         && (!app.renderer.is_pending(Slot::Main) || app.renderer.retrying(Slot::Main)))
     .then(|| app.renderer.failure_of(Slot::Main, id))

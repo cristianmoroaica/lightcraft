@@ -75,14 +75,12 @@ pub(crate) fn parse_markers(b: &[u8]) -> Option<Markers> {
         let end = (p + 2 + len).min(b.len());
         let seg = &b[start..end];
         match marker {
-            0xC0..=0xCF if marker != 0xC4 && marker != 0xC8 && marker != 0xCC => {
-                if seg.len() >= 6 && m.components == 0 {
-                    m.precision = seg[0];
-                    m.sof = marker;
-                    m.height = u16::from_be_bytes([seg[1], seg[2]]) as u32;
-                    m.width = u16::from_be_bytes([seg[3], seg[4]]) as u32;
-                    m.components = seg[5];
-                }
+            0xC0..=0xCF if marker != 0xC4 && marker != 0xC8 && marker != 0xCC && seg.len() >= 6 && m.components == 0 => {
+                m.precision = seg[0];
+                m.sof = marker;
+                m.height = u16::from_be_bytes([seg[1], seg[2]]) as u32;
+                m.width = u16::from_be_bytes([seg[3], seg[4]]) as u32;
+                m.components = seg[5];
             }
             0xE1 => {
                 if seg.starts_with(b"Exif\0\0") && m.exif.is_none() {
