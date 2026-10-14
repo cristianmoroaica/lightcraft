@@ -356,6 +356,8 @@ pub struct MediaCache {
     /// Whether originals (and smart previews) are on disk: cached and checked off the UI thread
     /// in the app (see [`crate::availability`]).
     pub availability: crate::availability::Availability,
+    /// Which colour profile each file is read in, cached (see [`crate::color_profiles`]).
+    pub color_profiles: crate::color_profiles::ColorProfiles,
     scenes: Vec<lightcraft_scenes::Scene>,
     /// Rendered thumbnails (memory, plus disk once a library is attached).
     pub rendered: Arc<PreviewCache>,
@@ -427,6 +429,7 @@ impl Default for MediaCache {
             file_bytes: None,
             smart_dir: None,
             availability: Default::default(),
+            color_profiles: Default::default(),
             scenes: Vec::new(),
             rendered: Arc::new(PreviewCache::memory(rendered_budget(budget))),
             denoise: DenoiseIndex::default(),

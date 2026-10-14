@@ -6,6 +6,8 @@
 //!   profiles (matrix/TRC exactly, LUT/CMYK via the `moxcms` CMS), 16-bit and float precision are
 //!   preserved. EXIF/XMP/ICC blobs are passed through untouched; orientation is reported, never applied.
 //! - [`to_working`] converts a decode result to linear Rec.2020 D65 (the pipeline working space).
+//! - [`read_color_profile`] names the colour profile a decode would use (and which tag said so),
+//!   from the headers; [`Decoded::profile`] does the same for a decode.
 //! - [`read_header`] reads a file's stored dimensions and orientation from its headers, without
 //!   decoding pixels (import probes).
 //! - [`decode_thumbnail`] is the fast path for grid thumbnails (EXIF thumbnail or DCT-scaled decode).
@@ -31,6 +33,7 @@ mod jxl;
 mod jxl_encode;
 mod other;
 mod png_codec;
+pub mod profile;
 pub mod proof;
 mod psd;
 mod sniff;
@@ -43,6 +46,7 @@ pub use encode::{
     encode_avif, encode_avif_hdr, encode_avif_pq, encode_jpeg, encode_png, encode_png_pq, encode_psd, encode_tiff, encode_webp_lossless, hlg_signal,
 };
 pub use jxl_encode::{JxlColour, JxlEffort, JxlOptions, encode_jxl};
+pub use profile::{ProfileInfo, read_color_profile};
 pub use sniff::{Format, sniff};
 pub use space::{NamedSpace, SourceSpace, SpaceOrigin, Trc};
 

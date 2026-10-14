@@ -122,6 +122,20 @@ fn layout(ct: ColorType, compression: Option<u32>, planar: bool) -> Result<(Mode
     Ok(l)
 }
 
+/// What [`crate::read_color_profile`] needs from a TIFF (ICC profile, colour model, float samples),
+/// from the first IFD without reading the image data.
+pub(crate) fn color_header(bytes: &[u8]) -> Result<(Meta, Model, bool)> {
+    let mut d = Decoder::new(std::io::Cursor::new(bytes)).map_err(err)?.with_limits(limits(&DecodeOptions::default()));
+    let ct = d.colortype().map_err(err)?;
+    let compression = d.get_tag_u32(Tag::Compression).ok();
+    let planar = d.get_tag_u32(Tag::PlanarConfiguration).ok() == Some(2);
+    let (model, ..) = layout(ct, compression, planar)?;
+    // SampleFormat 3 = IEEE floating point
+    let float = d.get_tag_u16_vec(Tag::SampleFormat).ok().is_some_and(|v| v.first() == Some(&3));
+    let icc = tag_bytes(&mut d, Tag::IccProfile);
+    Ok((Meta { icc, ..Default::default() }, model, float))
+}
+
 /// Stored dimensions and orientation from the first IFD, without reading the image data. Refused,
 /// as a decode would refuse it: a layout or compression we can't decode, or strips/tiles that
 /// start past the end of the file (truncated). The compressed data itself is not checked.

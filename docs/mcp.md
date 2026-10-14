@@ -211,7 +211,7 @@ still reaches every command.
 |---|---|
 | `lightcraft://library` | Source, filter, sort, selection, undo/redo labels (`library.state`) |
 | `lightcraft://photos` | Photos in the current view (`catalog.query`) |
-| `lightcraft://photo/active` | Everything about the active photo (`photo.inspect`) |
+| `lightcraft://photo/active` | Everything about the active photo (`photo.inspect`), including `colorProfile` (the space the file is read in and the tag that said so; see `docs/control-protocol.md`) |
 | `lightcraft://develop/active` | The active photo's develop settings (`develop.get`) |
 | `lightcraft://controls` | Every develop control with its current value (`develop.controls`) |
 

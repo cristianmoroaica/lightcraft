@@ -74,7 +74,8 @@ fn nclx_colour_and_ten_bit() {
     let bytes = build(&Spec { bit_depth: 10, props: vec![Prop::Nclx(12, 13, 1, true)], ..Spec::new(64, 32, &|x, _| [(x * 16) as u16, 512, 512]) });
     let d = decode(&bytes, DecodeOptions::default()).unwrap();
     assert_eq!(d.space.named, Some(NamedSpace::DisplayP3));
-    assert_eq!(d.space.origin, SpaceOrigin::Container);
+    assert_eq!(d.space.origin, SpaceOrigin::Cicp);
+    assert_eq!(d.profile().summary(), "Display P3 · HEIF nclx");
     assert_eq!(d.bit_depth, 10);
     // Full-range 10-bit neutral steps of 16 code values: linear values rise monotonically.
     let row: Vec<f32> = (0..64).map(|x| d.image.row(0)[x][1]).collect();

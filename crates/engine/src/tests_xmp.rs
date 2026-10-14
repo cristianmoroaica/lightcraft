@@ -649,6 +649,42 @@ fn all_metadata_lists_exif_and_xmp() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `photo.inspect` says which colour profile the file is read in and which tag said so.
+#[test]
+fn inspect_reports_the_color_profile() {
+    let dir = temp_dir("colorprofile");
+    let path = dir.join("wide.png");
+    let icc = lightcraft_codecs::icc::write_named(lightcraft_codecs::NamedSpace::DisplayP3);
+    let img = lightcraft_raster::Rgba8 { width: 16, height: 8, data: vec![[200, 60, 40, 255]; 128] };
+    let meta = lightcraft_codecs::EncodeMeta { icc: Some(&icc), ..Default::default() };
+    std::fs::write(&path, lightcraft_codecs::encode_png(&lightcraft_codecs::EncodeImage::rgba8(&img), &meta).unwrap()).unwrap();
+    let plain = dir.join("plain.jpg");
+    std::fs::write(
+        &plain,
+        lightcraft_codecs::encode_jpeg(&lightcraft_codecs::EncodeImage::rgba8(&img), 90, Default::default(), &Default::default()).unwrap(),
+    )
+    .unwrap();
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy(), plain.to_string_lossy()]})).unwrap();
+    let ids: Vec<u64> = s.catalog.photos().map(|p| p.id.0).collect();
+    let profile = |s: &mut Session, name: &str| {
+        let id = s.catalog.photos().find(|p| p.file_name == name).unwrap().id.0;
+        s.execute("photo.inspect", &json!({"id": id})).unwrap()["colorProfile"].clone()
+    };
+    assert_eq!(ids.len(), 2);
+    let p = profile(&mut s, "wide.png");
+    assert_eq!(p["name"], "Display P3", "{p}");
+    assert_eq!(p["origin"], "icc");
+    assert_eq!(p["originLabel"], "embedded ICC");
+    assert_eq!(p["unsupported"], false);
+    let p = profile(&mut s, "plain.jpg");
+    assert_eq!((p["name"].as_str(), p["origin"].as_str()), (Some("sRGB"), Some("untagged")), "{p}");
+    // demo photos are generated in the working space
+    let mut d = Session::with_demo();
+    assert_eq!(d.execute("photo.inspect", &json!({})).unwrap()["colorProfile"]["origin"], "generated");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Convert to DNG: a corpus raw (skipped without the corpus) becomes a DNG next to it with the
 /// photo relinked and its edits kept; undo goes back to the original; non-raws are skipped.
 #[test]

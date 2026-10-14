@@ -28,6 +28,16 @@ pub(crate) fn decode(bytes: &[u8], opts: &DecodeOptions) -> Result<Decoded> {
     finish(F, raw, Meta { icc, exif, xmp, ..Default::default() }, (w, h), opts)
 }
 
+/// What [`crate::read_color_profile`] needs from a WebP (its `ICCP` and `EXIF` chunks), without
+/// decoding the image.
+pub(crate) fn color_header(bytes: &[u8]) -> Result<Meta> {
+    let mut d = image_webp::WebPDecoder::new(std::io::Cursor::new(bytes)).map_err(err)?;
+    d.set_memory_limit(bytes.len());
+    let icc = d.icc_profile().ok().flatten();
+    let exif = d.exif_metadata().ok().flatten().map(|e| e.strip_prefix(b"Exif\0\0").map(<[u8]>::to_vec).unwrap_or(e));
+    Ok(Meta { icc, exif, ..Default::default() })
+}
+
 /// Stored dimensions and EXIF orientation from the RIFF chunks and the bitstream header, without
 /// decoding the image. Refused, as a decode would refuse it: no image chunk (`VP8 `, `VP8L` or an
 /// animation frame), or one that runs past the end of the file (truncated). The compressed data
