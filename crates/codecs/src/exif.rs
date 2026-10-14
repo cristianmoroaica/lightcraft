@@ -86,8 +86,11 @@ pub(crate) struct ExifSummary {
     pub orientation: Option<u16>,
     /// (offset, length) of the IFD1 JPEG thumbnail within the blob.
     pub thumbnail: Option<(usize, usize)>,
-    /// EXIF ColorSpace = 0xFFFF with InteropIndex "R03" (Adobe RGB (1998) "option" files).
+    /// Adobe RGB (1998) declared: EXIF ColorSpace = 2 (written by some cameras) or 0xFFFF
+    /// (uncalibrated) with InteropIndex "R03" (DCF "option" files).
     pub adobe_rgb_hint: bool,
+    /// EXIF ColorSpace = 1: sRGB declared.
+    pub srgb_declared: bool,
 }
 
 pub(crate) fn summarize(blob: &[u8]) -> ExifSummary {
@@ -121,10 +124,15 @@ pub(crate) fn summarize(blob: &[u8]) -> ExifSummary {
     {
         let cs = ee.iter().find(|e| e.tag == 0xA001).and_then(|e| t.uint(e));
         let interop = ee.iter().find(|e| e.tag == 0xA005).and_then(|e| t.uint(e));
-        if cs == Some(0xFFFF)
-            && let Some((ie, _)) = interop.and_then(|p| t.ifd(p as usize))
-        {
-            s.adobe_rgb_hint = ie.iter().any(|e| e.tag == 1 && t.bytes(e).is_some_and(|b| b.starts_with(b"R03")));
+        match cs {
+            Some(1) => s.srgb_declared = true,
+            Some(2) => s.adobe_rgb_hint = true,
+            Some(0xFFFF) => {
+                if let Some((ie, _)) = interop.and_then(|p| t.ifd(p as usize)) {
+                    s.adobe_rgb_hint = ie.iter().any(|e| e.tag == 1 && t.bytes(e).is_some_and(|b| b.starts_with(b"R03")));
+                }
+            }
+            _ => {}
         }
     }
     s

@@ -123,6 +123,19 @@ pub(crate) fn decode(bytes: &[u8], opts: &DecodeOptions) -> Result<Decoded> {
     decode_with_fallback(bytes, opts, None)
 }
 
+/// What [`crate::read_color_profile`] needs from a JPEG (ICC profile, EXIF, colour model), from
+/// the markers without decoding the scan data.
+pub(crate) fn color_header(bytes: &[u8]) -> Result<(Meta, Model)> {
+    let m = parse_markers(bytes).ok_or_else(|| Error::Malformed(F, "missing SOI".into()))?;
+    let model = match m.components {
+        0 => return Err(Error::Malformed(F, "no frame header".into())),
+        1 => Model::Gray,
+        4 => Model::Cmyk,
+        _ => Model::Rgb,
+    };
+    Ok((Meta { icc: m.icc, exif: m.exif, ..Default::default() }, model))
+}
+
 /// Stored dimensions and EXIF orientation from the markers, without decoding the scan data. The
 /// file is refused, as a decode would refuse it, when it has no frame header, an unsupported frame
 /// type or component count, or when its markers don't run to an end-of-image marker after the

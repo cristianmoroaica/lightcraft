@@ -225,8 +225,21 @@ pub fn rgb_to_xyz_d50(space: &RgbSpace) -> Mat3 {
 pub enum SpaceOrigin {
     /// No colour information in the file: assumed sRGB.
     Untagged,
-    /// A container-level description (PNG `sRGB`/`cHRM`/`gAMA`, JPEG XL enum colour encoding, …).
+    /// A container-level description not covered by a more specific variant (JPEG XL enum colour
+    /// encoding, the colour space a raw file declares for its embedded JPEG preview, …).
     Container,
+    /// ITU-T H.273 code points (PNG `cICP`, HEIF `nclx`) naming primaries and a transfer we model.
+    Cicp,
+    /// ITU-T H.273 code points naming primaries or a transfer we don't model (PQ, HLG, DCI-P3
+    /// primaries, narrow range, …): **fell back to sRGB**. The code points are kept for the UI.
+    CicpUnsupported { primaries: u8, transfer: u8 },
+    /// A PNG `sRGB` chunk.
+    PngSrgb,
+    /// PNG `gAMA` and/or `cHRM` chunks.
+    PngGammaChromaticities,
+    /// The EXIF ColorSpace tag: 2 (Adobe RGB, written by some cameras), 0xFFFF (uncalibrated) with
+    /// interoperability index `R03` (DCF option file: Adobe RGB), or 1 (sRGB).
+    ExifColorSpace,
     /// An embedded ICC matrix/TRC profile, applied exactly.
     IccMatrixTrc,
     /// An embedded LUT-based (or CMYK/Lab) ICC profile, converted by the CMS to linear Rec.2020.
@@ -271,9 +284,20 @@ impl SourceSpace {
             4 => Trc::Gamma(2.2),
             _ => return None,
         };
-        let mut s = SourceSpace::named(named, SpaceOrigin::Container);
+        let mut s = SourceSpace::named(named, SpaceOrigin::Cicp);
         s.trc = Some([trc.clone(), trc.clone(), trc]);
         Some(s)
+    }
+
+    /// [`SourceSpace::from_cicp`] for a code point pair that is actually present in a file: one we
+    /// don't model becomes sRGB marked [`SpaceOrigin::CicpUnsupported`] (so the UI can say the tag
+    /// was not applied) instead of silently claiming sRGB. `full_range = false` (narrow-range video
+    /// levels) is not modelled either.
+    pub(crate) fn from_cicp_tag(primaries: u8, transfer: u8, full_range: bool) -> SourceSpace {
+        match SourceSpace::from_cicp(primaries.into(), transfer.into()) {
+            Some(s) if full_range => s,
+            _ => SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::CicpUnsupported { primaries, transfer }),
+        }
     }
 
     /// Linear source RGB → linear `dst` RGB (Bradford from D50 to `dst`'s white).

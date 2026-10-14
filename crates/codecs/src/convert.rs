@@ -70,8 +70,12 @@ pub(crate) struct Meta {
     pub xmp: Option<String>,
     /// Orientation from the container itself (e.g. TIFF tag); EXIF blob is consulted otherwise.
     pub orientation: Option<u16>,
-    /// Container-level colour description (PNG cHRM/gAMA/sRGB/cICP, JXL enum encoding, …).
+    /// Container-level colour description (PNG cHRM/gAMA/sRGB, an unmodelled cICP, JXL enum
+    /// encoding, …): used when there is no usable ICC profile.
     pub hint: Option<SourceSpace>,
+    /// A container description that takes precedence over an embedded ICC profile (PNG 3rd
+    /// edition: a recognised `cICP` wins over `iCCP`).
+    pub overrides_icc: Option<SourceSpace>,
     /// `image` already went through a CMS/transform producing this space (skip interpretation).
     pub already_linear: Option<SourceSpace>,
 }
@@ -107,7 +111,7 @@ pub(crate) fn finish(format: Format, raw: Raw, meta: Meta, source_dims: (u32, u3
     let (image, space) = if let Some(space) = meta.already_linear.clone() {
         (to_rgb_passthrough(&raw, ch), space)
     } else if raw.model == Model::Cmyk {
-        cmyk(&raw, ch, meta.icc.as_deref(), parsed_icc.as_ref())
+        cmyk(&raw, ch, &meta, parsed_icc.as_ref())
     } else {
         rgb_or_gray(&raw, ch, &meta, parsed_icc.as_ref(), float)
     };
@@ -252,54 +256,80 @@ fn from_vec(w: usize, h: usize, data: Vec<[f32; 3]>) -> Rgb32f {
     Rgb32f { width: w, height: h, data }
 }
 
-fn rgb_or_gray(raw: &Raw, ch: usize, meta: &Meta, info: Option<&icc::IccInfo>, float: bool) -> (Rgb32f, SourceSpace) {
-    let gray = raw.model == Model::Gray;
-    if let (Some(bytes), Some(info)) = (meta.icc.as_deref(), info) {
+/// How the device samples are turned into linear light once [`choose_space`] has decided.
+pub(crate) enum Plan {
+    /// Per-channel transfer curves (exact).
+    Curves([Trc; 3]),
+    /// Through the CMS to linear Rec.2020 (LUT-based RGB/gray profiles, CMYK with a profile).
+    Cms,
+    /// CMYK without a usable profile: `(1 - C)(1 - K)`, read as sRGB.
+    NaiveCmyk,
+}
+
+/// Which colour description of a file wins, shared by the decoder ([`finish`]) and the header-only
+/// reader ([`crate::read_color_profile`]) so both always agree. Priority: a container description
+/// that overrides ICC (PNG `cICP`), then the embedded ICC profile, then the container hint (PNG
+/// `sRGB`, `gAMA`/`cHRM`, …), then EXIF ColorSpace, else untagged sRGB. A [`Plan::Cms`] answer
+/// can still fail when the pixels are converted: the caller then falls back with
+/// [`icc_unusable`].
+pub(crate) fn choose_space(model: Model, meta: &Meta, info: Option<&icc::IccInfo>, float: bool) -> (SourceSpace, Plan) {
+    if model == Model::Cmyk {
+        if meta.icc.is_some() && info.is_some_and(|i| i.model == IccColorModel::Cmyk) {
+            let mut s = SourceSpace::named(NamedSpace::Rec2020, SpaceOrigin::IccCms);
+            s.trc = None;
+            return (s, Plan::Cms);
+        }
+        let origin = if meta.icc.is_some() { SpaceOrigin::IccUnsupported } else { SpaceOrigin::Naive };
+        return (SourceSpace::named(NamedSpace::Srgb, origin), Plan::NaiveCmyk);
+    }
+    let gray = model == Model::Gray;
+    let curves = |s: &SourceSpace| Plan::Curves(s.trc.clone().unwrap_or([Trc::Srgb, Trc::Srgb, Trc::Srgb]));
+    if let Some(h) = &meta.overrides_icc {
+        return (h.clone(), curves(h));
+    }
+    if let (Some(_), Some(info)) = (meta.icc.as_deref(), info) {
         match (&info.kind, gray) {
             (IccKind::MatrixTrc { to_xyz_d50, trc }, false) => {
                 let space = SourceSpace { named: info.named, to_xyz_d50: *to_xyz_d50, trc: Some(trc.clone()), origin: SpaceOrigin::IccMatrixTrc };
-                return (linearize(raw, ch, trc), space);
+                return (space, Plan::Curves(trc.clone()));
             }
             (IccKind::MatrixTrc { to_xyz_d50, trc }, true) => {
                 // Gray data with an RGB profile: neutral axis only needs the green curve.
                 let t = [trc[1].clone(), trc[1].clone(), trc[1].clone()];
                 let space = SourceSpace { named: info.named, to_xyz_d50: *to_xyz_d50, trc: Some(t.clone()), origin: SpaceOrigin::IccMatrixTrc };
-                return (linearize(raw, ch, &t), space);
+                return (space, Plan::Curves(t));
             }
             (IccKind::Gray { trc }, true) => {
                 let t = [trc.clone(), trc.clone(), trc.clone()];
                 let mut space = SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::IccMatrixTrc);
                 space.trc = Some(t.clone());
-                return (linearize(raw, ch, &t), space);
+                return (space, Plan::Curves(t));
             }
             (IccKind::NeedsCms, _) => {
                 let wanted = if gray { IccColorModel::Gray } else { IccColorModel::Rgb };
                 if info.model == wanted {
-                    let nc = raw.model.channels();
-                    let samples = device_samples(raw, ch, nc);
-                    if let Some(px) = icc::cms_to_linear_rec2020(bytes, &samples, nc) {
-                        let mut s = SourceSpace::named(NamedSpace::Rec2020, SpaceOrigin::IccCms);
-                        s.trc = None;
-                        return (from_vec(raw.width, raw.height, px), s);
-                    }
+                    let mut s = SourceSpace::named(NamedSpace::Rec2020, SpaceOrigin::IccCms);
+                    s.trc = None;
+                    return (s, Plan::Cms);
                 }
             }
             _ => {}
         }
     }
     if meta.icc.is_some() {
-        // Present but unusable (malformed, mismatched model, CMS failure): assume sRGB.
-        let s = SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::IccUnsupported);
-        let t = NamedSpace::Srgb.trc();
-        return (linearize(raw, ch, &[t.clone(), t.clone(), t]), s);
+        // Present but unusable (malformed, mismatched model): assume sRGB.
+        let s = icc_unusable();
+        let plan = curves(&s);
+        return (s, plan);
     }
     if let Some(h) = &meta.hint {
-        let t = h.trc.clone().unwrap_or([Trc::Srgb, Trc::Srgb, Trc::Srgb]);
-        return (linearize(raw, ch, &t), h.clone());
+        return (h.clone(), curves(h));
     }
-    let adobe = meta.exif.as_deref().map(exif::summarize).is_some_and(|s| s.adobe_rgb_hint);
-    let mut s = if adobe {
-        SourceSpace::named(NamedSpace::AdobeRgb, SpaceOrigin::Container)
+    let summary = meta.exif.as_deref().map(exif::summarize).unwrap_or_default();
+    let mut s = if summary.adobe_rgb_hint {
+        SourceSpace::named(NamedSpace::AdobeRgb, SpaceOrigin::ExifColorSpace)
+    } else if summary.srgb_declared {
+        SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::ExifColorSpace)
     } else {
         SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::Untagged)
     };
@@ -307,19 +337,41 @@ fn rgb_or_gray(raw: &Raw, ch: usize, meta: &Meta, info: Option<&icc::IccInfo>, f
         // Untagged float data is conventionally scene-linear.
         s.trc = Some([Trc::Linear, Trc::Linear, Trc::Linear]);
     }
-    let t = s.trc.clone().unwrap_or([Trc::Srgb, Trc::Srgb, Trc::Srgb]);
-    (linearize(raw, ch, &t), s)
+    let plan = curves(&s);
+    (s, plan)
 }
 
-fn cmyk(raw: &Raw, ch: usize, icc_bytes: Option<&[u8]>, info: Option<&icc::IccInfo>) -> (Rgb32f, SourceSpace) {
+/// An embedded ICC profile that can't be applied (malformed, mismatched model, CMS failure):
+/// sRGB, marked [`SpaceOrigin::IccUnsupported`].
+pub(crate) fn icc_unusable() -> SourceSpace {
+    SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::IccUnsupported)
+}
+
+fn rgb_or_gray(raw: &Raw, ch: usize, meta: &Meta, info: Option<&icc::IccInfo>, float: bool) -> (Rgb32f, SourceSpace) {
+    let (space, plan) = choose_space(raw.model, meta, info, float);
+    match plan {
+        Plan::Curves(t) => (linearize(raw, ch, &t), space),
+        Plan::Cms => {
+            let nc = raw.model.channels();
+            let samples = device_samples(raw, ch, nc);
+            if let Some(px) = meta.icc.as_deref().and_then(|b| icc::cms_to_linear_rec2020(b, &samples, nc)) {
+                return (from_vec(raw.width, raw.height, px), space);
+            }
+            let t = NamedSpace::Srgb.trc();
+            (linearize(raw, ch, &[t.clone(), t.clone(), t]), icc_unusable())
+        }
+        // only chosen for CMYK, which never comes here
+        Plan::NaiveCmyk => (linearize(raw, ch, &[Trc::Srgb, Trc::Srgb, Trc::Srgb]), space),
+    }
+}
+
+fn cmyk(raw: &Raw, ch: usize, meta: &Meta, info: Option<&icc::IccInfo>) -> (Rgb32f, SourceSpace) {
     let samples = device_samples(raw, ch, 4);
-    if let (Some(bytes), Some(info)) = (icc_bytes, info)
-        && info.model == IccColorModel::Cmyk
-        && let Some(px) = icc::cms_to_linear_rec2020(bytes, &samples, 4)
+    let (space, plan) = choose_space(Model::Cmyk, meta, info, false);
+    if matches!(plan, Plan::Cms)
+        && let Some(px) = meta.icc.as_deref().and_then(|b| icc::cms_to_linear_rec2020(b, &samples, 4))
     {
-        let mut s = SourceSpace::named(NamedSpace::Rec2020, SpaceOrigin::IccCms);
-        s.trc = None;
-        return (from_vec(raw.width, raw.height, px), s);
+        return (from_vec(raw.width, raw.height, px), space);
     }
     // Naive: RGB = (1 - C)(1 - K) … treated as sRGB-encoded.
     let px = samples
@@ -331,6 +383,6 @@ fn cmyk(raw: &Raw, ch: usize, icc_bytes: Option<&[u8]>, info: Option<&icc::IccIn
             [(1.0 - c[0]) * k, (1.0 - c[1]) * k, (1.0 - c[2]) * k].map(lightcraft_color::transfer::srgb_to_linear)
         })
         .collect();
-    let origin = if icc_bytes.is_some() { SpaceOrigin::IccUnsupported } else { SpaceOrigin::Naive };
+    let origin = if meta.icc.is_some() { SpaceOrigin::IccUnsupported } else { SpaceOrigin::Naive };
     (from_vec(raw.width, raw.height, px), SourceSpace::named(NamedSpace::Srgb, origin))
 }

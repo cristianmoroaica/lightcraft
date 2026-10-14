@@ -129,8 +129,20 @@ const NAMES: &[(u16, &str)] = &[
     (0x001d, "GPS Date Stamp"),
 ];
 
-/// GPS tags reuse low numbers, so they are looked up separately.
+/// Interoperability IFD tags (EXIF 2.3 §4.6.7, DCF): low numbers, like GPS.
+const INTEROP_NAMES: &[(u16, &str)] = &[
+    (0x0001, "Interoperability Index"),
+    (0x0002, "Interoperability Version"),
+    (0x1000, "Related Image File Format"),
+    (0x1001, "Related Image Width"),
+    (0x1002, "Related Image Height"),
+];
+
+/// GPS and interoperability tags reuse low numbers, so they are looked up separately.
 fn name(group: &str, tag: u16) -> String {
+    if group == "Interop" {
+        return INTEROP_NAMES.iter().find(|(t, _)| *t == tag).map(|(_, n)| n.to_string()).unwrap_or_else(|| format!("Tag 0x{tag:04X}"));
+    }
     let gps = group == "GPS";
     NAMES
         .iter()
@@ -191,6 +203,8 @@ fn enumerated(group: &str, tag: u16, v: i64) -> Option<&'static str> {
         (0x9207, 3) => "Spot",
         (0x9207, 5) => "Pattern",
         (0xa001, 1) => "sRGB",
+        // not in the EXIF standard, but written by cameras shooting in Adobe RGB
+        (0xa001, 2) => "Adobe RGB",
         (0xa001, 0xffff) => "Uncalibrated",
         (0xa402, 0) => "Auto",
         (0xa402, 1) => "Manual",
@@ -221,6 +235,23 @@ fn enumerated(group: &str, tag: u16, v: i64) -> Option<&'static str> {
 
 fn value_text(group: &str, tag: u16, v: &Value) -> String {
     let single = |x: i64| enumerated(group, tag, x).map(str::to_string).unwrap_or_else(|| x.to_string());
+    if group == "Interop" && tag == 0x0001 {
+        // the DCF interoperability index says which colour space rule set the file follows
+        let raw = match v {
+            Value::Ascii(s) => s.trim().to_string(),
+            Value::Byte(b) | Value::Undefined(b) => String::from_utf8_lossy(b).trim_matches(char::from(0)).trim().to_string(),
+            _ => String::new(),
+        };
+        let meaning = match raw.as_str() {
+            "R98" => Some("sRGB (DCF basic file)"),
+            "R03" => Some("Adobe RGB (DCF option file)"),
+            "THM" => Some("DCF thumbnail file"),
+            _ => None,
+        };
+        if let Some(m) = meaning {
+            return format!("{raw} – {m}");
+        }
+    }
     match v {
         Value::Ascii(s) => s.trim().to_string(),
         Value::Short(a) if a.len() == 1 => single(a[0] as i64),
@@ -454,6 +485,30 @@ mod tests {
         assert_eq!(compression(&file_tag_rows(&dng)), ["Lossless JPEG"]);
         let plain = [b"II*    ".to_vec(), ifd(&[entry(0x0103, 3, 1, 7)])].concat();
         assert_eq!(compression(&file_tag_rows(&plain)), ["JPEG"]);
+    }
+
+    /// IFD0 → EXIF IFD (ColorSpace `cs`, interop pointer) → interop IFD (InteropIndex `index`).
+    fn exif_with_interop(cs: u16, index: &[u8; 4]) -> Vec<u8> {
+        let exif_at = 8 + (2 + 12 + 4);
+        let interop_at = exif_at + (2 + 2 * 12 + 4);
+        let mut b = vec![b'I', b'I', 42, 0, 8, 0, 0, 0];
+        b.extend(ifd(&[entry(0x8769, 4, 1, exif_at)]));
+        b.extend(ifd(&[entry(0xa001, 3, 1, cs as u32), entry(0xa005, 4, 1, interop_at)]));
+        b.extend(ifd(&[entry(0x0001, 2, 4, u32::from_le_bytes(*index)), entry(0x0002, 7, 4, u32::from_le_bytes(*b"0100"))]));
+        b
+    }
+
+    #[test]
+    fn interop_index_and_adobe_rgb_color_space_are_named() {
+        let rows = file_tag_rows(&exif_with_interop(2, b"R03\0"));
+        let get = |g: &str, n: &str| rows.iter().find(|r| r.group == g && r.name == n).map(|r| r.value.clone());
+        assert_eq!(get("EXIF", "Color Space").as_deref(), Some("Adobe RGB"));
+        assert_eq!(get("Interop", "Interoperability Index").as_deref(), Some("R03 – Adobe RGB (DCF option file)"));
+        assert_eq!(get("Interop", "Interoperability Version").as_deref(), Some("0100"));
+        assert!(!rows.iter().any(|r| r.name.starts_with("Tag 0x000")), "{rows:?}");
+        let rows = file_tag_rows(&exif_with_interop(0xffff, b"R98\0"));
+        assert!(rows.iter().any(|r| r.value == "Uncalibrated"));
+        assert!(rows.iter().any(|r| r.value == "R98 – sRGB (DCF basic file)"), "{rows:?}");
     }
 
     #[test]

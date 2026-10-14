@@ -53,8 +53,29 @@ pub(crate) fn decode(bytes: &[u8], opts: &DecodeOptions) -> Result<Decoded> {
         // Some writers keep the JPEG "Exif\0\0" prefix.
         if e.starts_with(b"Exif\0\0") { e[6..].to_vec() } else { e }
     });
-    let meta = Meta { icc: info.icc_profile.as_ref().map(|c| c.to_vec()), exif, xmp, hint: container_hint(info), ..Default::default() };
+    let meta = Meta { xmp, ..color_meta(info, exif) };
     finish(F, raw, meta, (w, h), opts)
+}
+
+/// The colour-related metadata of a PNG (its `iCCP`, `cICP`, `sRGB`, `gAMA`/`cHRM` chunks and
+/// EXIF), as [`finish`] reads it.
+fn color_meta(info: &png::Info, exif: Option<Vec<u8>>) -> Meta {
+    let (overrides_icc, hint) = container_hint(info);
+    Meta { icc: info.icc_profile.as_ref().map(|c| c.to_vec()), exif, hint, overrides_icc, ..Default::default() }
+}
+
+/// What [`crate::read_color_profile`] needs from a PNG, read from the chunks before the image data
+/// (where the PNG specification puts every colour chunk) without inflating the image.
+pub(crate) fn color_header(bytes: &[u8]) -> Result<(Meta, Model)> {
+    let dec = png::Decoder::new(std::io::Cursor::new(bytes));
+    let reader = dec.read_info().map_err(err)?;
+    let info = reader.info();
+    let model = match info.color_type {
+        png::ColorType::Grayscale | png::ColorType::GrayscaleAlpha => Model::Gray,
+        _ => Model::Rgb,
+    };
+    let exif = info.exif_metadata.as_ref().map(|e| e.strip_prefix(b"Exif\0\0").unwrap_or(e).to_vec());
+    Ok((color_meta(info, exif), model))
 }
 
 /// Stored dimensions and EXIF orientation (`eXIf`, wherever it is) from the chunk headers, without
@@ -126,14 +147,23 @@ pub(crate) fn header(b: &[u8]) -> Result<(u32, u32, u16)> {
     Ok((w, h, exif.map(crate::exif::summarize).unwrap_or_default().orientation.unwrap_or(1)))
 }
 
-fn container_hint(info: &png::Info) -> Option<SourceSpace> {
-    if let Some(s) =
-        info.coding_independent_code_points.as_ref().and_then(|c| SourceSpace::from_cicp(c.color_primaries.into(), c.transfer_function.into()))
-    {
-        return Some(s);
+/// The PNG's container colour description: `(overrides ICC, hint)`. PNG 3rd edition order: `cICP`
+/// takes precedence over `iCCP`, which takes precedence over `sRGB`, then `gAMA`/`cHRM`. A `cICP`
+/// we model overrides the ICC profile; one we don't (PQ, HLG, …) is a hint marked
+/// [`SpaceOrigin::CicpUnsupported`]: an embedded ICC profile (often an approximation of the same
+/// space) is then used, else sRGB is assumed and says so.
+fn container_hint(info: &png::Info) -> (Option<SourceSpace>, Option<SourceSpace>) {
+    if let Some(c) = info.coding_independent_code_points.as_ref() {
+        // matrix coefficients other than 0 (identity) are not allowed for PNG's RGB data
+        let s = SourceSpace::from_cicp_tag(c.color_primaries, c.transfer_function, c.is_video_full_range_image && c.matrix_coefficients == 0);
+        return if matches!(s.origin, SpaceOrigin::Cicp) { (Some(s), None) } else { (None, Some(s)) };
     }
+    (None, legacy_hint(info))
+}
+
+fn legacy_hint(info: &png::Info) -> Option<SourceSpace> {
     if info.srgb.is_some() {
-        return Some(SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::Container));
+        return Some(SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::PngSrgb));
     }
     let gamma = info.gama_chunk.or(info.source_gamma).map(|g| g.into_value()).filter(|g| *g > 0.0 && g.is_finite());
     let chrm = info.chrm_chunk.or(info.source_chromaticities);
@@ -145,7 +175,7 @@ fn container_hint(info: &png::Info) -> Option<SourceSpace> {
         Some(g) => Trc::Gamma(1.0 / g),
         None => Trc::Srgb,
     };
-    let mut s = SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::Container);
+    let mut s = SourceSpace::named(NamedSpace::Srgb, SpaceOrigin::PngGammaChromaticities);
     if let Some(c) = chrm {
         let xy = |p: (png::ScaledFloat, png::ScaledFloat)| Xy::new(p.0.into_value() as f64, p.1.into_value() as f64);
         let space = RgbSpace { name: "PNG cHRM", r: xy(c.red), g: xy(c.green), b: xy(c.blue), white: xy(c.white) };
