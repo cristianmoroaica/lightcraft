@@ -2462,7 +2462,8 @@ mod tests {
     /// accessibility and place fields reach the photo.
     #[test]
     fn info_fields_keep_typing_and_save() {
-        let mut h = demo([1300.0, 1000.0]);
+        // tall enough for City (below the Color Profile row) to be clicked fully on screen
+        let mut h = demo([1300.0, 1100.0]);
         let t = Duration::from_secs(10);
         h.request("ui.set", json!({"view": "detail", "right": "info"}), t);
         h.settle(SETTLE);

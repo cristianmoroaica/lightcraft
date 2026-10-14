@@ -631,6 +631,7 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 ui.add(egui::Label::new(egui::RichText::new(cap).size(12.5).color(t.text)).truncate());
             });
         });
+        color_profile(app, ui, &p);
         ui.add_space(6.0);
         for (label, key, value) in [
             ("Location", "location", &m.location),
@@ -720,6 +721,38 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             let _ = app.run("dialog.allMetadata", json!({}));
         }
     });
+}
+
+/// Info's "Color Profile" row: the space the file is read in and the tag that said so ("Display
+/// P3 · embedded ICC"). A tag that could not be applied (the image is then shown as sRGB) is in
+/// the caution colour, with the reason on hover. Read from the file's headers on a worker; until
+/// then the row says so.
+fn color_profile(app: &LightcraftApp, ui: &mut egui::Ui, p: &lightcraft_catalog::Photo) {
+    if p.kind == lightcraft_catalog::MediaKind::Video {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(crate::i18n::tr("Color Profile")).size(11.5).color(t.text_dim));
+    let (text, color, hover) = match app.session.media.color_profile(p, false) {
+        None => (crate::i18n::tr("Reading…").to_string(), t.text_dim, None),
+        Some(Err(e)) => (crate::i18n::tr("Unknown").to_string(), t.text_dim, Some(e)),
+        Some(Ok(info)) => {
+            let mut hover = info.description.clone().unwrap_or_default();
+            if info.unsupported {
+                if !hover.is_empty() {
+                    hover.push('\n');
+                }
+                hover.push_str(crate::i18n::tr("Colours are shown as if the file were sRGB and may look wrong."));
+            }
+            (info.summary(), if info.unsupported { t.caution } else { t.text }, (!hover.is_empty()).then_some(hover))
+        }
+    };
+    let r = ui.add(egui::Label::new(egui::RichText::new(text).size(12.5).color(color)).truncate().sense(Sense::hover()));
+    register(ui.ctx(), "info:colorProfile", r.rect);
+    if let Some(h) = hover {
+        r.on_hover_text(h);
+    }
 }
 
 /// The camera card at the top of Info: camera, lens, size · file size and format, then the

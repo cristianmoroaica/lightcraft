@@ -151,12 +151,18 @@ pub fn specs() -> Vec<CommandSpec> {
             let all: Vec<Album> = s.catalog.albums().cloned().collect();
             Ok(Value::Array(all.iter().filter(|a| a.parent.is_none()).map(|a| album_json(a, &all, &s.catalog, 0)).collect()))
         }),
-        cmd!(query "photo.inspect", "Inspect Photo", [], None, "{id?}", always, |s, p| {
+        cmd!(query "photo.inspect", "Inspect Photo", [], None, "{id?} → the photo record plus albums, history, stack and colorProfile {name, origin, originLabel, description?, unsupported}", always, |s, p| {
             let id = photo_arg(s, p, "photo.inspect")?;
             let ph = s.catalog.photo(id).ok_or_else(|| bad("photo.inspect", "no such photo"))?;
             let mut v = serde_json::to_value(ph.as_ref()).unwrap_or_default();
             v["albums"] = json!(s.catalog.albums_of(id).iter().map(|a| a.0).collect::<Vec<_>>());
             v["history"] = json!(ph.history.iter().map(|h| h.label.clone()).collect::<Vec<_>>());
+            // which colour profile the file is read in, and which tag said so (null for video)
+            v["colorProfile"] = match s.media.color_profile(ph, true) {
+                Some(Ok(p)) => serde_json::to_value(p).unwrap_or_default(),
+                Some(Err(e)) => json!({"error": e}),
+                None => Value::Null,
+            };
             if let Some(st) = s.catalog.stack_of(id) {
                 v["stack"] = json!({
                     "id": st.id.0,
