@@ -87,11 +87,16 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 ui.memory_mut(|m| m.request_focus(id));
             }
             let focused = ui.memory(|m| m.has_focus(id));
+            let hover = crate::widgets::anim(ui, id.with("lc-hover"), ui.rect_contains_pointer(sr) && !focused);
+            if focused {
+                // soft focus halo outside the field, then the accent border
+                ui.painter().rect_stroke(sr.expand(1.5), 9.5, Stroke::new(3.0, t.focus.gamma_multiply(0.35)), StrokeKind::Outside);
+            }
             ui.painter().rect(
                 sr,
-                4.0,
-                if focused { t.canvas } else { t.field },
-                Stroke::new(1.0, if focused { t.accent } else { t.field_border }),
+                8.0,
+                if focused { t.canvas } else { crate::widgets::lerp(t.field, t.inset, 0.6 * hover) },
+                Stroke::new(1.0, if focused { t.focus } else { crate::widgets::lerp(t.field_border, t.button_border, hover) }),
                 StrokeKind::Inside,
             );
             let mut child =
@@ -121,6 +126,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let fresp = ui.interact(fr, egui::Id::new("filter-btn"), Sense::click());
             register(ui.ctx(), "icon:filter", fr);
             let filtering = app.session.filter != Default::default() || app.ui.filter_bar;
+            crate::widgets::state_layer(ui, &fresp, fr.shrink(1.0), 6.0);
             paint(
                 ui.painter(),
                 fr.shrink(6.0),
@@ -171,6 +177,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 let r = Rect::from_center_size(pos2(x, full.center().y), vec2(28.0, 28.0));
                 let resp = ui.interact(r, egui::Id::new(("top", id)), Sense::click()).on_hover_text(crate::i18n::tr(tip));
                 register(ui.ctx(), format!("icon:{id}"), r);
+                crate::widgets::state_layer(ui, &resp, r, 6.0);
                 let warn = id == "cloud" && unsaved.is_some();
                 let colour = if warn {
                     t.caution

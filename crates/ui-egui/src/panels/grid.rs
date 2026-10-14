@@ -579,7 +579,9 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
     let active = state == lightcraft_engine::SelectionState::Active;
     let p = ui.painter();
     let img_rect = if square {
-        let base = if selected { t.cell_selected } else { t.cell };
+        // hover lifts the cell towards the selected tone so the pointer target is obvious
+        let h = crate::widgets::anim(ui, resp.id.with("lc-hover"), resp.hovered());
+        let base = if selected { t.cell_selected } else { crate::widgets::lerp(t.cell, t.cell_selected, 0.55 * h) };
         p.rect_filled(r, 0.0, crate::theme::label_background(base, photo.label, selected));
         Rect::from_min_max(r.min + vec2(10.0, 24.0), r.max - vec2(10.0, 10.0))
     } else {

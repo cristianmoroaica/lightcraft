@@ -82,6 +82,42 @@ pub fn preview_only_notice(ui: &mut Ui, key: &str, reason: &str) {
     register(ui.ctx(), format!("notice:previewOnly:{key}"), r.rect);
 }
 
+// ------------------------------------------------------------------ interaction feedback
+
+/// Seconds a hover / press transition takes: short enough to feel immediate, long enough to read
+/// as motion (desktop guidance: 100–150 ms for state changes).
+const STATE_ANIM: f32 = 0.12;
+
+/// An eased 0..1 amount that follows `on` (hover, press, open…) for widget `id`.
+pub fn anim(ui: &Ui, id: egui::Id, on: bool) -> f32 {
+    ui.ctx().animate_bool_with_time(id, on, STATE_ANIM)
+}
+
+/// Whether the primary button is held down on this widget right now.
+pub fn pressed(resp: &Response) -> bool {
+    resp.is_pointer_button_down_on() && resp.enabled()
+}
+
+/// A state layer: a white veil over `rect` whose strength follows hover (about 8 %) and press (about
+/// 13 %), animated. Paint it after the widget's fill and before its content.
+pub fn state_layer(ui: &Ui, resp: &Response, rect: Rect, radius: f32) {
+    let h = anim(ui, resp.id.with("lc-hover"), resp.hovered() && resp.enabled());
+    let d = anim(ui, resp.id.with("lc-press"), pressed(resp));
+    let a = 0.08 * h + 0.05 * d;
+    if a > 0.001 {
+        ui.painter().rect_filled(rect, radius, Tokens::get(ui.ctx()).veil.gamma_multiply(a));
+    }
+}
+
+/// A keyboard focus ring (2 px, accent, 1 px outside `rect`), shown only while the widget has
+/// keyboard focus so pointer users never see it.
+pub fn focus_ring(ui: &Ui, resp: &Response, rect: Rect, radius: f32) {
+    if resp.has_focus() {
+        let t = Tokens::get(ui.ctx());
+        ui.painter().rect_stroke(rect.expand(1.0), radius + 1.0, Stroke::new(2.0, t.focus), StrokeKind::Outside);
+    }
+}
+
 // ------------------------------------------------------------------ colour helpers
 
 pub fn hex(s: &str) -> Color32 {
@@ -126,28 +162,46 @@ fn track_stops(track: &Track) -> Option<Vec<Color32>> {
     })
 }
 
-fn paint_track(ui: &Ui, rect: Rect, track: &Track, t: &Tokens, thumb_x: f32, ring: f32) {
+/// Track half-thickness (the track is a 4 pt pill: thin enough to read as a rail, thick enough to
+/// carry a gradient and an active fill).
+const TRACK_HALF: f32 = 2.0;
+
+/// Paint a slider track: a rounded pill (gradient tracks keep their colours), and for plain
+/// tracks an active fill from the origin (0 for bipolar controls, else the minimum) to the thumb.
+fn paint_track(ui: &Ui, rect: Rect, track: &Track, t: &Tokens, origin_x: f32, thumb_x: f32, enabled: bool, emphasis: f32) {
     let p = ui.painter();
     let y = rect.center().y;
-    let h = 1.0;
+    let h = TRACK_HALF;
+    let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.4) };
     if let Some(stops) = track_stops(track) {
-        // gradient: segments between stops
+        // gradient between rounded end caps, drawn as thin segments
         let n = stops.len().max(2) - 1;
-        let steps = 48;
+        let first = stops.first().copied().unwrap_or(t.track);
+        let last = stops.last().copied().unwrap_or(t.track);
+        let (l, r) = (rect.left() + h, rect.right() - h);
+        let steps = 64;
         for i in 0..steps {
             let (a, b) = (i as f32 / steps as f32, (i + 1) as f32 / steps as f32);
-            let seg = (a * n as f32).floor() as usize;
-            let local = a * n as f32 - seg as f32;
-            let c = lerp(stops[seg.min(n)], stops[(seg + 1).min(n)], local);
-            let x0 = rect.left() + rect.width() * a;
-            let x1 = rect.left() + rect.width() * b;
-            p.rect_filled(Rect::from_min_max(pos2(x0, y - h - 0.5), pos2(x1 + 0.5, y + h + 0.5)), 0.0, c);
+            let pos = a * n as f32;
+            let seg = (pos.floor() as usize).min(n);
+            let local = pos - seg as f32;
+            let c0 = stops.get(seg).copied().unwrap_or(last);
+            let c1 = stops.get((seg + 1).min(n)).copied().unwrap_or(last);
+            let x0 = l + (r - l) * a;
+            let x1 = l + (r - l) * b;
+            p.rect_filled(Rect::from_min_max(pos2(x0, y - h), pos2(x1 + 0.5, y + h)), 0.0, dim(lerp(c0, c1, local)));
         }
+        p.circle_filled(pos2(l, y), h, dim(first));
+        p.circle_filled(pos2(r, y), h, dim(last));
     } else {
-        p.rect_filled(Rect::from_min_max(pos2(rect.left(), y - h), pos2(rect.right(), y + h)), 1.0, t.track);
+        let rail = Rect::from_min_max(pos2(rect.left(), y - h), pos2(rect.right(), y + h));
+        p.rect_filled(rail, h, dim(t.track));
+        let (a, b) = if thumb_x < origin_x { (thumb_x, origin_x) } else { (origin_x, thumb_x) };
+        if b - a > 0.5 {
+            let fill = lerp(t.track_fill, t.thumb_hover, emphasis * 0.35);
+            p.rect_filled(Rect::from_min_max(pos2(a, y - h), pos2(b, y + h)), h, dim(fill));
+        }
     }
-    // gap around the hollow thumb
-    p.rect_filled(Rect::from_center_size(pos2(thumb_x, y), vec2(ring * 2.0 + 4.0, 6.0)), 0.0, t.chrome);
 }
 
 /// Result of a slider interaction this frame.
@@ -381,30 +435,66 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
         }
     }
     // paint
-    let hovered = resp.hovered() || resp.dragged();
-    let text_c = if enabled { t.text_label } else { t.text_disabled };
+    let dragging = resp.dragged() && enabled;
+    let hovered = (resp.hovered() || ui.rect_contains_pointer(row)) && enabled;
+    let hover_t = anim(ui, id.with("lc-hover"), hovered || dragging);
+    let drag_t = anim(ui, id.with("lc-drag"), dragging);
+    let edited = (v - spec.default).abs() > spec.step.max(1e-9) * 0.5;
+    let text_c = if !enabled { t.text_disabled } else { lerp(t.text_label, t.text, hover_t) };
+    let value_c = if !enabled {
+        t.text_disabled
+    } else if dragging {
+        t.text
+    } else if edited {
+        lerp(t.text_label, t.text, 0.6 + 0.4 * hover_t)
+    } else {
+        lerp(t.text_dim, t.text_label, hover_t)
+    };
     let p = ui.painter();
     p.text(label_rect.left_center(), Align2::LEFT_CENTER, crate::i18n::tr(label_override.unwrap_or(spec.label)), t.font(12.5), text_c);
     if typing.is_none() {
-        p.text(label_rect.right_center(), Align2::RIGHT_CENTER, shown_value(spec, v), t.font(12.5), text_c);
+        let galley = p.layout_no_wrap(shown_value(spec, v), t.font(12.5), value_c);
+        let value_pos = pos2(label_rect.right() - galley.size().x, label_rect.center().y - galley.size().y / 2.0);
+        if drag_t > 0.01 {
+            // while dragging the read-out sits on a pill so the changing number is easy to follow
+            let pill = Rect::from_min_size(value_pos, galley.size()).expand2(vec2(5.0, 1.0));
+            p.rect_filled(pill, 4.0, t.hover.gamma_multiply(drag_t));
+        }
+        p.galley(value_pos, galley, value_c);
         if enabled && value_resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }
     }
-    let ring = 7.0;
     let tx = to_x(v);
-    paint_track(ui, track_rect, &spec.track, &t, tx, ring);
+    let origin = if spec.min < 0.0 && spec.max > 0.0 { 0.0 } else { spec.min };
+    paint_track(ui, track_rect, &spec.track, &t, to_x(origin), tx, enabled, hover_t);
     let p = ui.painter();
-    let ring_c = if !enabled {
-        t.text_disabled
-    } else if hovered {
-        t.thumb_hover
-    } else {
-        t.thumb
-    };
-    p.circle_filled(pos2(tx, track_rect.center().y), ring, t.chrome);
-    p.circle_stroke(pos2(tx, track_rect.center().y), ring, Stroke::new(2.0, ring_c));
-    if hovered {
+    let c = pos2(tx, track_rect.center().y);
+    // the default position, as a small notch, once the value has left it (double-click returns there)
+    if enabled && edited && hover_t > 0.01 {
+        let dx = to_x(spec.default.clamp(spec.min, spec.max));
+        p.circle_filled(pos2(dx, c.y), 1.6, t.canvas.gamma_multiply(hover_t));
+    }
+    // halo (state layer) behind the thumb: hover 10 %, drag a soft accent glow
+    let halo = 7.5 + 4.5 * hover_t + 1.5 * drag_t;
+    if hover_t > 0.01 {
+        p.circle_filled(c, halo, t.veil.gamma_multiply(0.10 * hover_t * (1.0 - drag_t)));
+    }
+    if drag_t > 0.01 {
+        p.circle_filled(c, halo, t.accent.gamma_multiply(0.35 * drag_t));
+    }
+    // solid thumb with a crisp outline and a soft drop shadow; grows a little when engaged
+    let ring = 6.0 + 1.0 * hover_t + 0.5 * drag_t;
+    let thumb_c = if !enabled { t.text_disabled } else { lerp(t.thumb, t.thumb_hover, hover_t) };
+    p.circle_filled(c + vec2(0.0, 1.0), ring + 1.0, Color32::from_black_alpha(if enabled { 90 } else { 40 }));
+    p.circle_filled(c, ring, thumb_c);
+    p.circle_stroke(c, ring, Stroke::new(1.0, Color32::from_black_alpha(110)));
+    if resp.has_focus() {
+        p.circle_stroke(c, ring + 3.0, Stroke::new(2.0, t.focus));
+    }
+    if dragging {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    } else if resp.hovered() && enabled {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
     }
     out
@@ -437,13 +527,17 @@ pub fn section_header(ui: &mut Ui, id: &str, title: &str, open: bool, enabled: O
     let (r, resp) = ui.allocate_exact_size(vec2(w, 52.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::CollapsingHeader, true, open, title));
     register(ui.ctx(), format!("section:{id}"), r);
+    let h = anim(ui, resp.id.with("lc-hover"), ui.rect_contains_pointer(r));
+    let d = anim(ui, resp.id.with("lc-press"), pressed(&resp));
     let p = ui.painter();
-    if ui.rect_contains_pointer(r) {
-        p.rect_filled(r, 0.0, t.chrome.gamma_multiply(1.06));
+    let veil = 0.035 * h + 0.03 * d;
+    if veil > 0.001 {
+        p.rect_filled(r, 0.0, t.veil.gamma_multiply(veil));
     }
     let chev = Rect::from_center_size(pos2(r.left() + 30.0, r.center().y), vec2(14.0, 14.0));
-    paint(p, chev, if open { Icon::ChevronDown } else { Icon::ChevronRight }, t.text_label);
+    paint(p, chev, if open { Icon::ChevronDown } else { Icon::ChevronRight }, lerp(t.text_dim, t.text, 0.45 + 0.55 * h));
     p.text(pos2(r.left() + 44.0, r.center().y), Align2::LEFT_CENTER, title, t.semibold(14.0), t.text);
+    focus_ring(ui, &resp, r.shrink(2.0), 4.0);
     let mut toggled = None;
     // shown while the pointer is anywhere on the header: `resp.hovered()` turns false as soon as the
     // pointer is over the eye itself (the eye is on top), which hid the eye before it could be
@@ -483,18 +577,23 @@ pub fn flyout_row(ui: &mut Ui, id: &str, title: &str, icon: Icon, open: bool) ->
     let resp = ui.interact(r, ui.id().with(("flyout", id)), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::CollapsingHeader, true, open, title));
     register(ui.ctx(), format!("flyout:{id}"), r);
+    let h = anim(ui, resp.id.with("lc-hover"), resp.hovered());
     let p = ui.painter();
-    p.rect_filled(r, 4.0, if resp.hovered() { t.hover.gamma_multiply(0.8) } else { t.inset });
+    p.rect(r, CornerRadius::same(6), t.inset, Stroke::new(1.0, lerp(t.inset, t.field_border, 0.5 + 0.5 * h)), StrokeKind::Inside);
+    state_layer(ui, &resp, r, 6.0);
+    let p = ui.painter();
     let tile = Rect::from_min_size(pos2(r.left() + 4.0, r.top() + 4.0), vec2(r.height() - 8.0, r.height() - 8.0));
-    p.rect_filled(tile, 3.0, t.chrome.gamma_multiply(1.15));
-    paint(p, tile.shrink(3.0), icon, t.text_label);
-    p.text(pos2(tile.right() + 10.0, r.center().y), Align2::LEFT_CENTER, title, t.semibold(13.0), t.text_label);
+    p.rect_filled(tile, 4.0, if open { t.accent.gamma_multiply(0.30) } else { lerp(t.chrome, t.hover, h) });
+    let fg = lerp(t.text_label, t.text, if open { 1.0 } else { h });
+    paint(p, tile.shrink(3.0), icon, fg);
+    p.text(pos2(tile.right() + 10.0, r.center().y), Align2::LEFT_CENTER, title, t.semibold(13.0), fg);
     paint(
         p,
         Rect::from_center_size(pos2(r.right() - 14.0, r.center().y), vec2(12.0, 12.0)),
         if open { Icon::ChevronDown } else { Icon::TriangleLeft },
-        t.text_label,
+        lerp(t.text_dim, t.text, h),
     );
+    focus_ring(ui, &resp, r, 6.0);
     resp
 }
 
@@ -508,17 +607,25 @@ pub fn text_button(ui: &mut Ui, id: &str, label: &str, active: bool) -> Response
     let (r, resp) = ui.allocate_exact_size(size, Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, label));
     register(ui.ctx(), format!("button:{id}"), r);
-    let fill = if active {
-        t.pressed
-    } else if resp.hovered() {
-        t.hover
+    paint_button(ui, &resp, r, active);
+    ui.painter().galley(r.center() - galley.size() / 2.0, galley, t.text);
+    resp
+}
+
+/// The shared look of bordered buttons and segments: a rounded fill with a hairline border that
+/// brightens on hover, a deeper fill while pressed, and an accent tint when `active` (selected).
+fn paint_button(ui: &Ui, resp: &Response, r: Rect, active: bool) {
+    let t = Tokens::get(ui.ctx());
+    let h = anim(ui, resp.id.with("lc-hover"), resp.hovered());
+    let (fill, border) = if active {
+        (lerp(t.button, t.accent, 0.38), lerp(t.button_border, t.accent, 0.75))
     } else {
-        t.button
+        (t.button, lerp(t.button_border, t.thumb, 0.35 * h))
     };
     let p = ui.painter();
-    p.rect(r, CornerRadius::same(4), fill, Stroke::new(1.0, t.button_border), StrokeKind::Inside);
-    p.galley(r.center() - galley.size() / 2.0, galley, t.text);
-    resp
+    p.rect(r, CornerRadius::same(6), fill, Stroke::new(1.0, border), StrokeKind::Inside);
+    state_layer(ui, resp, r.shrink(1.0), 5.0);
+    focus_ring(ui, resp, r, 6.0);
 }
 
 /// A segmented control: `labels` share the available width equally, `per_row` per row. Each segment is
@@ -538,16 +645,8 @@ pub fn segmented(ui: &mut Ui, id: &str, items: &[(&str, &str)], active: Option<u
                 let i = row_i * per_row + j;
                 let (r, resp) = ui.allocate_exact_size(vec2(seg_w, 24.0), Sense::click());
                 register(ui.ctx(), format!("button:{id}-{key}"), r);
-                let fill = if active == Some(i) {
-                    t.pressed
-                } else if resp.hovered() {
-                    t.hover
-                } else {
-                    t.button
-                };
-                let p = ui.painter();
-                p.rect(r, CornerRadius::same(4), fill, Stroke::new(1.0, t.button_border), StrokeKind::Inside);
-                p.text(r.center(), Align2::CENTER_CENTER, label, t.semibold(11.5), t.text);
+                paint_button(ui, &resp, r, active == Some(i));
+                ui.painter().text(r.center(), Align2::CENTER_CENTER, label, t.semibold(11.5), t.text);
                 if resp.clicked() {
                     clicked = Some(i);
                 }
@@ -567,18 +666,17 @@ pub fn icon_button(ui: &mut Ui, id: &str, icon: Icon, size: egui::Vec2, active: 
     let p = ui.painter();
     let sq = Rect::from_center_size(r.center(), vec2(32.0f32.min(size.x), 32.0f32.min(size.y)));
     if active {
-        p.rect_filled(sq, 4.0, t.tool_active);
-    } else if resp.hovered() && enabled {
-        p.rect_filled(sq, 4.0, t.hover.gamma_multiply(0.7));
+        p.rect_filled(sq, 6.0, t.tool_active);
     }
+    state_layer(ui, &resp, sq, 6.0);
+    focus_ring(ui, &resp, sq, 6.0);
+    let h = anim(ui, resp.id.with("lc-hover"), resp.hovered() && enabled);
     let c = if !enabled {
         t.text_disabled
     } else if active {
         t.pick
-    } else if resp.hovered() {
-        t.text
     } else {
-        t.icon
+        lerp(t.icon, t.text, h)
     };
     let glyph = (size.x.min(size.y) * 0.62).min(22.0);
     paint(p, Rect::from_center_size(r.center(), vec2(glyph, glyph)), icon, c);
@@ -606,7 +704,7 @@ pub fn stars(ui: &mut Ui, id: &str, rating: u8, size: f32) -> Option<u8> {
     // icon_button hover square, so hovering the current rating (where the preview looks the same) still shows feedback.
     for (i, r) in (0..5u8).zip(rects) {
         if hover_n == Some(i + 1) {
-            ui.painter().rect_filled(r, 4.0, t.hover.gamma_multiply(0.7));
+            ui.painter().rect_filled(r, 6.0, t.veil.gamma_multiply(0.08));
         }
         let filled = star_lit(i, rating, hover_n);
         paint(ui.painter(), r.shrink(size * 0.12), if filled { Icon::StarFilled } else { Icon::Star }, if filled { t.star } else { t.icon });
@@ -627,7 +725,12 @@ pub fn dropdown(ui: &mut Ui, id: &str, text: &str, font: egui::FontId, color: Co
     let (r, resp) = ui.allocate_exact_size(size, Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, text));
     register(ui.ctx(), format!("dropdown:{id}"), r);
-    let c = if resp.hovered() { t.text } else { color };
+    let h = anim(ui, resp.id.with("lc-hover"), resp.hovered());
+    let c = lerp(color, t.text, h);
+    if h > 0.01 {
+        ui.painter().rect_filled(r.expand2(vec2(5.0, 2.0)), 5.0, t.veil.gamma_multiply(0.07 * h));
+    }
+    focus_ring(ui, &resp, r.expand2(vec2(5.0, 2.0)), 5.0);
     ui.painter().galley(pos2(r.left(), r.center().y - galley.size().y / 2.0), galley, c);
     paint(ui.painter(), Rect::from_center_size(pos2(r.right() - 7.0, r.center().y + 1.0), vec2(12.0, 12.0)), Icon::ChevronDown, c);
     resp

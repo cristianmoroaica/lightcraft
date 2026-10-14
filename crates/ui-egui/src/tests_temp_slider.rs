@@ -41,7 +41,7 @@ fn widget(h: &Headless, id: &str) -> egui::Rect {
     h.app.widgets.iter().find(|(w, _)| w == id).map(|(_, r)| *r).unwrap_or_else(|| panic!("no widget {id}"))
 }
 
-/// Where the slider's thumb (the hollow ring on the track's centre line) is drawn, from 0 to 1 along the track.
+/// Where the slider's thumb (the solid outlined disc on the track's centre line) is drawn, from 0 to 1 along the track.
 fn thumb(h: &Headless, control: &str) -> f32 {
     let track = widget(h, &format!("slider:{control}"));
     let rings: Vec<f32> = h
@@ -49,7 +49,12 @@ fn thumb(h: &Headless, control: &str) -> f32 {
         .painted_shapes()
         .iter()
         .filter_map(|s| match s {
-            egui::epaint::Shape::Circle(c) if c.radius == 7.0 && (c.center.y - track.center().y).abs() < 0.5 => Some(c.center.x),
+            // the outlined disc, 6 pt at rest and up to 7.5 pt while hovered or dragged (the shadow sits 1 pt lower)
+            egui::epaint::Shape::Circle(c)
+                if (6.0..=7.5).contains(&c.radius) && c.stroke.width == 1.0 && (c.center.y - track.center().y).abs() < 0.5 =>
+            {
+                Some(c.center.x)
+            }
             _ => None,
         })
         .filter(|x| (track.left() - 0.5..=track.right() + 0.5).contains(x))

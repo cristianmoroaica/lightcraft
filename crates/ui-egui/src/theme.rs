@@ -7,6 +7,8 @@
 
 use std::sync::Arc;
 
+use crate::widgets::lerp;
+
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Visuals};
 
 pub const FONT_SEMIBOLD: &str = "semibold";
@@ -59,10 +61,17 @@ pub struct Tokens {
     pub text_disabled: Color32,
     /// Icon glyphs in the chrome.
     pub icon: Color32,
+    /// Slider rail (inactive part of the track).
     pub track: Color32,
+    /// Active part of a plain slider track (origin → thumb).
+    pub track_fill: Color32,
     pub thumb: Color32,
     pub thumb_hover: Color32,
     pub accent: Color32,
+    /// Keyboard focus rings (an accent that keeps 3:1 against the chrome).
+    pub focus: Color32,
+    /// Hover / press state layers are this colour at low alpha: white on dark themes, black on light.
+    pub veil: Color32,
     pub star: Color32,
     pub pick: Color32,
     pub reject: Color32,
@@ -139,10 +148,13 @@ impl Default for Tokens {
             text_dim: Color32::from_rgb(0x8e, 0x8e, 0x8e),
             text_disabled: Color32::from_rgb(0x5c, 0x5c, 0x5c),
             icon: Color32::from_rgb(0x9a, 0x9a, 0x9a),
-            track: Color32::from_rgb(0x5a, 0x5a, 0x5a),
-            thumb: Color32::from_rgb(0xa0, 0xa0, 0xa0),
-            thumb_hover: Color32::from_rgb(0xe0, 0xe0, 0xe0),
+            track: Color32::from_rgb(0x4a, 0x4a, 0x4a),
+            track_fill: Color32::from_rgb(0xa8, 0xa8, 0xa8),
+            thumb: Color32::from_rgb(0xcf, 0xcf, 0xcf),
+            thumb_hover: Color32::from_rgb(0xf6, 0xf6, 0xf6),
             accent: Color32::from_rgb(0x01, 0x65, 0xdd),
+            focus: Color32::from_rgb(0x4c, 0x9b, 0xff),
+            veil: Color32::WHITE,
             star: Color32::from_rgb(0xd8, 0xd8, 0xd8),
             pick: Color32::from_rgb(0xf0, 0xf0, 0xf0),
             reject: Color32::from_rgb(0xe0, 0x4a, 0x4a),
@@ -203,7 +215,10 @@ impl Tokens {
                 text_dim: rgb(0x6a6a6a),
                 text_disabled: rgb(0xa2a2a2),
                 icon: rgb(0x555555),
-                track: rgb(0xa8a8a8),
+                track: rgb(0xbcbcbc),
+                track_fill: rgb(0x555555),
+                focus: rgb(0x0a62d0),
+                veil: Color32::BLACK,
                 thumb: rgb(0x5e5e5e),
                 thumb_hover: rgb(0x262626),
                 accent: rgb(0x0a62d0),
@@ -233,7 +248,10 @@ impl Tokens {
                 text_dim: rgb(0x707070),
                 text_disabled: rgb(0xababab),
                 icon: rgb(0x585858),
-                track: rgb(0xbdbdbd),
+                track: rgb(0xcdcdcd),
+                track_fill: rgb(0x5a5a5a),
+                focus: rgb(0x0a62d0),
+                veil: Color32::BLACK,
                 thumb: rgb(0x606060),
                 thumb_hover: rgb(0x202020),
                 accent: rgb(0x0a62d0),
@@ -413,8 +431,8 @@ pub fn apply_kind(ctx: &egui::Context, kind: ThemeKind) {
     v.extreme_bg_color = t.field;
     v.faint_bg_color = t.inset;
     v.window_stroke = Stroke::new(1.0, t.button_border);
-    v.window_corner_radius = CornerRadius::same(6);
-    v.menu_corner_radius = CornerRadius::same(6);
+    v.window_corner_radius = CornerRadius::same(10);
+    v.menu_corner_radius = CornerRadius::same(8);
     v.selection.bg_fill = t.accent.gamma_multiply(0.6);
     v.selection.stroke = Stroke::new(1.0, t.accent);
     v.override_text_color = Some(t.text_label);
@@ -424,11 +442,23 @@ pub fn apply_kind(ctx: &egui::Context, kind: ThemeKind) {
     let w = &mut v.widgets;
     craft_ui::theme::WidgetPalette { noninteractive: t.chrome, inactive: t.button, hovered: t.hover, active: t.pressed, open: t.hover }.apply_to(
         w,
-        CornerRadius::same(4),
+        CornerRadius::same(6),
         Stroke::new(1.0, t.text_label),
     );
+    for wv in [&mut w.noninteractive, &mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+        // no growth on hover/press: feedback comes from fill and border, so nothing shifts
+        wv.expansion = 0.0;
+    }
     w.noninteractive.bg_stroke = Stroke::new(1.0, t.divider);
     w.inactive.bg_stroke = Stroke::new(1.0, t.button_border);
+    w.hovered.bg_stroke = Stroke::new(1.0, lerp(t.button_border, t.text_label, 0.3));
+    w.active.bg_stroke = Stroke::new(1.0, t.focus);
+    w.open.bg_stroke = Stroke::new(1.0, t.button_border);
+    w.hovered.fg_stroke = Stroke::new(1.0, t.text);
+    w.active.fg_stroke = Stroke::new(1.0, t.text);
+    v.slider_trailing_fill = true;
+    v.handle_shape = egui::style::HandleShape::Circle;
+    v.text_cursor.stroke = Stroke::new(2.0, t.focus);
     ctx.set_visuals_of(egui::Theme::Dark, v.clone());
     ctx.set_visuals_of(egui::Theme::Light, v);
     ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
@@ -440,7 +470,7 @@ pub fn apply_kind(ctx: &egui::Context, kind: ThemeKind) {
         s.text_styles.insert(egui::TextStyle::Button, FontId::proportional(13.0));
         s.text_styles.insert(egui::TextStyle::Small, FontId::proportional(11.0));
         s.text_styles.insert(egui::TextStyle::Heading, FontId::new(16.0, FontFamily::Name(FONT_SEMIBOLD.into())));
-        s.animation_time = 0.08;
+        s.animation_time = 0.12;
     });
 }
 

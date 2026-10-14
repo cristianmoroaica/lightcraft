@@ -35,11 +35,12 @@ fn toggle(ui: &mut egui::Ui, id: &str, on: bool, tip: &str, draw: impl FnOnce(&e
     register(ui.ctx(), format!("filter:{id}"), r);
     let p = ui.painter();
     if on {
-        p.rect_filled(r, 5.0, t.tool_active);
-        p.rect_stroke(r, 5.0, Stroke::new(1.0, t.accent), StrokeKind::Inside);
-    } else if resp.hovered() {
-        p.rect_filled(r, 5.0, t.hover);
+        p.rect_filled(r, 6.0, t.tool_active);
+        p.rect_stroke(r, 6.0, Stroke::new(1.0, t.accent), StrokeKind::Inside);
     }
+    crate::widgets::state_layer(ui, &resp, r, 6.0);
+    crate::widgets::focus_ring(ui, &resp, r, 6.0);
+    let p = ui.painter();
     draw(
         p,
         r.shrink(5.0),

@@ -100,11 +100,10 @@ fn row_sensed(
     let edge = r.right().min(visible_right);
     let inner = Rect::from_min_max(r.min + vec2(8.0, 0.0), pos2((r.right() - 8.0).min(edge - 8.0).max(r.left() + 8.0), r.bottom()));
     if selected {
-        ui.painter().rect_filled(inner, 4.0, t.canvas);
+        ui.painter().rect_filled(inner, 6.0, t.canvas);
         register(ui.ctx(), format!("highlight:{id}"), inner);
-    } else if resp.hovered() {
-        ui.painter().rect_filled(inner, 4.0, t.hover.gamma_multiply(0.6));
     }
+    crate::widgets::state_layer(ui, &resp, inner, 6.0);
     paint(
         ui.painter(),
         Rect::from_min_size(pos2(r.left() + 18.0 + indent, r.center().y - 8.0), vec2(16.0, 16.0)),
