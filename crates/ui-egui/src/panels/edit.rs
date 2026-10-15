@@ -144,7 +144,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     if app.session.auto_sync && n > 1 {
         egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 0, bottom: 10 }).show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::tr_format!("Auto Sync: edits apply to {n} photos", n = n)).color(t.accent).size(12.0));
+                ui.label(
+                    egui::RichText::new(crate::i18n::tr_format!("Auto Sync: edits apply to {n} photos", n = n))
+                        .color(t.accent)
+                        .size(12.0 - crate::theme::FONT_SHRINK),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if text_button(ui, "autoSyncOff", crate::i18n::tr("Turn Off"), false).clicked() {
                         let _ = app.run("develop.autoSync", json!({"on": false}));
@@ -368,7 +372,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             if lp && !has_lens {
                 ui.label(
                     egui::RichText::new(crate::i18n::tr("No lens data embedded in this file (DNG lens opcodes only)."))
-                        .size(11.0)
+                        .size(11.0 - crate::theme::FONT_SHRINK)
                         .color(Tokens::get(ui.ctx()).text_dim),
                 );
             }
@@ -1313,7 +1317,11 @@ fn point_color(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings) 
     });
     if n == 0 {
         egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 2, bottom: 8 }).show(ui, |ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr("Pick a colour on the photo with the eyedropper.")).size(12.0).color(t.text_dim));
+            ui.label(
+                egui::RichText::new(crate::i18n::tr("Pick a colour on the photo with the eyedropper."))
+                    .size(12.0 - crate::theme::FONT_SHRINK)
+                    .color(t.text_dim),
+            );
         });
         return;
     }
@@ -1650,7 +1658,11 @@ fn paint_wheel(p: &egui::Painter, c: Pos2, rad: f32) {
 fn quick_develop(app: &mut LightcraftApp, ui: &mut egui::Ui, n: usize) {
     let t = Tokens::get(ui.ctx());
     egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 0, bottom: 10 }).show(ui, |ui| {
-        ui.label(egui::RichText::new(crate::i18n::tr_format!("Quick Develop · {n} photos", n = n)).color(t.text_label).size(12.5));
+        ui.label(
+            egui::RichText::new(crate::i18n::tr_format!("Quick Develop · {n} photos", n = n))
+                .color(t.text_label)
+                .size(12.5 - crate::theme::FONT_SHRINK),
+        );
         ui.add_space(4.0);
         let rows: [(&str, &str, f64, f64); 9] = [
             ("Exposure", "light.exposure", 1.0 / 3.0, 1.0),
@@ -1665,9 +1677,10 @@ fn quick_develop(app: &mut LightcraftApp, ui: &mut egui::Ui, n: usize) {
         ];
         egui::Grid::new("quick-develop").num_columns(5).spacing([4.0, 3.0]).show(ui, |ui| {
             for (label, ctl, small, big) in rows {
-                ui.label(egui::RichText::new(crate::i18n::tr(label)).size(11.5).color(t.text_dim));
+                ui.label(egui::RichText::new(crate::i18n::tr(label)).size(11.5 - crate::theme::FONT_SHRINK).color(t.text_dim));
                 for (txt, d) in [("◀◀", -big), ("◀", -small), ("▶", small), ("▶▶", big)] {
-                    let r = ui.add(egui::Button::new(egui::RichText::new(txt).size(10.0)).min_size(egui::vec2(28.0, 18.0)));
+                    let r =
+                        ui.add(egui::Button::new(egui::RichText::new(txt).size(10.0 - crate::theme::FONT_SHRINK)).min_size(egui::vec2(28.0, 18.0)));
                     crate::widgets::register(ui.ctx(), format!("button:quick-{ctl}-{txt}"), r.rect);
                     if r.on_hover_text(crate::i18n::tr_format!("{label} {d:+} on every selected photo", d = d, label = crate::i18n::tr(label)))
                         .clicked()

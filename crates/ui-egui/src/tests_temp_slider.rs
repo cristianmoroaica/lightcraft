@@ -90,7 +90,7 @@ fn the_kelvin_temp_slider_has_lightrooms_scale() {
     h.settle(SETTLE);
     assert_eq!(develop(&h).wb.temp, 7000.0, "a click in the middle of the track");
     // drag from As Shot on a Z 6II NEF (about 4850 K, 28 % along the track) to the middle: the thumb moves
-    // three quarters of the pointer's travel (`DRAG_SENSITIVITY`)
+    // two thirds of the pointer's travel (`DRAG_SENSITIVITY`)
     set(&mut h, "wb.temp", 4850.0);
     let track = widget(&h, "slider:wb.temp");
     let from = track.left() + thumb(&h, "wb.temp") * track.width();
@@ -131,10 +131,10 @@ fn the_relative_temp_slider_stays_linear() {
     assert!((rel - 50.0).abs() < 0.6, "{k} K is {rel} on the relative scale");
 }
 
-/// A drag moves the slider by three quarters of the pointer's travel from where it was, wherever on the
+/// A drag moves the slider by two thirds of the pointer's travel from where it was, wherever on the
 /// track it starts: the thumb does not jump to the pointer.
 #[test]
-fn a_drag_moves_the_slider_by_three_quarters_of_the_pointer_travel() {
+fn a_drag_moves_the_slider_by_a_share_of_the_pointer_travel() {
     let mut h = edit_panel(true);
     set(&mut h, "light.exposure", 0.0);
     let track = widget(&h, "slider:light.exposure");
@@ -144,7 +144,7 @@ fn a_drag_moves_the_slider_by_three_quarters_of_the_pointer_travel() {
         h.request("ui.drag", json!({"x": from, "y": track.center().y, "toX": from + 0.2 * track.width(), "toY": track.center().y, "steps": 10}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);
-    // 0.2 × 0.75 of the 10-stop range
+    // 0.2 × DRAG_SENSITIVITY of the 10-stop range
     let ev = develop(&h).light.exposure;
-    assert!((ev - 1.5).abs() <= 0.06, "dragged to {ev}");
+    assert!((ev - 2.0 * crate::widgets::DRAG_SENSITIVITY).abs() <= 0.06, "dragged to {ev}");
 }

@@ -323,7 +323,7 @@ fn crop(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                     "{} of 4 guides — drag along lines that should be vertical or horizontal.",
                     d.geometry.guides.len()
                 ))
-                .size(11.0)
+                .size(11.0 - crate::theme::FONT_SHRINK)
                 .color(Tokens::get(ui.ctx()).text_dim),
             );
         }
@@ -592,7 +592,9 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             meta_field(app, ui, label, key, value, lines);
         }
         // file: name (rename), path (reveal), capture time (edit)
-        let small = |ui: &mut egui::Ui, text: &str| ui.label(egui::RichText::new(crate::i18n::tr(text)).size(11.5).color(t.text_dim));
+        let small = |ui: &mut egui::Ui, text: &str| {
+            ui.label(egui::RichText::new(crate::i18n::tr(text)).size(11.5 - crate::theme::FONT_SHRINK).color(t.text_dim))
+        };
         small(ui, "File Name");
         ui.allocate_ui_with_layout(vec2(ui.available_width(), 22.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if crate::widgets::icon_button(ui, "infoRename", Icon::Pencil, vec2(20.0, 20.0), false, true, "Rename…").clicked() {
@@ -609,7 +611,7 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 lightcraft_catalog::Source::File { path } => path.clone(),
                 lightcraft_catalog::Source::Demo { .. } => crate::i18n::tr("Generated demo photo").into(),
             };
-            ui.add(egui::Label::new(egui::RichText::new(path).size(12.0).color(t.text_label)).truncate());
+            ui.add(egui::Label::new(egui::RichText::new(path).size(12.0 - crate::theme::FONT_SHRINK).color(t.text_label)).truncate());
             if crate::menus::ui_enabled(app, "app.showInFinder") {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if crate::widgets::icon_button(ui, "infoReveal", Icon::Folder, vec2(20.0, 20.0), false, true, crate::menus::reveal_label())
@@ -628,7 +630,7 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             }
             let cap = p.captured.as_deref().map(crate::i18n::display_time).unwrap_or_else(|| "—".into());
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.add(egui::Label::new(egui::RichText::new(cap).size(12.5).color(t.text)).truncate());
+                ui.add(egui::Label::new(egui::RichText::new(cap).size(12.5 - crate::theme::FONT_SHRINK).color(t.text)).truncate());
             });
         });
         color_profile(app, ui, &p);
@@ -644,7 +646,7 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         // GPS: typed as "lat, lon" (or degrees / minutes / seconds); empty clears it
         let gps = m.gps.map(|(la, lo)| format!("{la:.6}, {lo:.6}")).unwrap_or_default();
         let gid = egui::Id::new("info-gps");
-        ui.label(egui::RichText::new("GPS").size(11.5).color(t.text_dim));
+        ui.label(egui::RichText::new("GPS").size(11.5 - crate::theme::FONT_SHRINK).color(t.text_dim));
         let mut text: String = ui.data(|d| d.get_temp(gid)).unwrap_or_else(|| gps.clone());
         let r = ui.add(egui::TextEdit::singleline(&mut text).hint_text(crate::i18n::tr("latitude, longitude")).desired_width(f32::INFINITY));
         crate::widgets::screen_reader_name(ui.ctx(), r.id, "GPS");
@@ -663,7 +665,7 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         if let Some((la, lo)) = m.gps {
             let pretty = format!("{:.5}° {}, {:.5}° {}", la.abs(), if la >= 0.0 { "N" } else { "S" }, lo.abs(), if lo >= 0.0 { "E" } else { "W" });
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(pretty).size(11.0).color(t.text_dim));
+                ui.label(egui::RichText::new(pretty).size(11.0 - crate::theme::FONT_SHRINK).color(t.text_dim));
                 if text_button(ui, "showOnMap", crate::i18n::tr("Show on Map"), false)
                     .on_hover_text(crate::i18n::tr("Open the place in OpenStreetMap"))
                     .clicked()
@@ -733,7 +735,7 @@ fn color_profile(app: &LightcraftApp, ui: &mut egui::Ui, p: &lightcraft_catalog:
     }
     let t = Tokens::get(ui.ctx());
     ui.add_space(4.0);
-    ui.label(egui::RichText::new(crate::i18n::tr("Color Profile")).size(11.5).color(t.text_dim));
+    ui.label(egui::RichText::new(crate::i18n::tr("Color Profile")).size(11.5 - crate::theme::FONT_SHRINK).color(t.text_dim));
     let (text, color, hover) = match app.session.media.color_profile(p, false) {
         None => (crate::i18n::tr("Reading…").to_string(), t.text_dim, None),
         Some(Err(e)) => (crate::i18n::tr("Unknown").to_string(), t.text_dim, Some(e)),
@@ -748,7 +750,7 @@ fn color_profile(app: &LightcraftApp, ui: &mut egui::Ui, p: &lightcraft_catalog:
             (info.summary(), if info.unsupported { t.caution } else { t.text }, (!hover.is_empty()).then_some(hover))
         }
     };
-    let r = ui.add(egui::Label::new(egui::RichText::new(text).size(12.5).color(color)).truncate().sense(Sense::hover()));
+    let r = ui.add(egui::Label::new(egui::RichText::new(text).size(12.5 - crate::theme::FONT_SHRINK).color(color)).truncate().sense(Sense::hover()));
     register(ui.ctx(), "info:colorProfile", r.rect);
     if let Some(h) = hover {
         r.on_hover_text(h);
@@ -762,7 +764,7 @@ fn camera_card(ui: &mut egui::Ui, p: &lightcraft_catalog::Photo) {
     let m = &p.meta;
     egui::Frame::NONE.fill(t.canvas).corner_radius(6.0).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        let dim = |s: &str| egui::RichText::new(s.to_string()).size(12.0).color(t.text_label);
+        let dim = |s: &str| egui::RichText::new(s.to_string()).size(12.0 - crate::theme::FONT_SHRINK).color(t.text_label);
         if !m.camera.is_empty() {
             ui.label(dim(&m.camera));
         }
@@ -773,7 +775,7 @@ fn camera_card(ui: &mut egui::Ui, p: &lightcraft_catalog::Photo) {
             ui.label(dim(&format!("{} × {}  ·  {}", p.width, p.height, human_size(p.file_size))));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 egui::Frame::NONE.fill(t.chrome).corner_radius(3.0).inner_margin(egui::Margin::symmetric(5, 1)).show(ui, |ui| {
-                    ui.label(egui::RichText::new(p.format.to_uppercase()).size(10.5).color(t.text_label));
+                    ui.label(egui::RichText::new(p.format.to_uppercase()).size(10.5 - crate::theme::FONT_SHRINK).color(t.text_label));
                 });
             });
         });
@@ -809,7 +811,7 @@ fn human_size(bytes: u64) -> String {
 /// Copyright Status: Unknown / Copyrighted / Public Domain (`xmpRights:Marked`).
 fn copyright_status(app: &mut LightcraftApp, ui: &mut egui::Ui, current: lightcraft_catalog::CopyrightStatus) {
     let t = Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(crate::i18n::tr("Copyright Status")).size(11.5).color(t.text_dim));
+    ui.label(egui::RichText::new(crate::i18n::tr("Copyright Status")).size(11.5 - crate::theme::FONT_SHRINK).color(t.text_dim));
     let r = egui::ComboBox::from_id_salt("info-copyright-status").selected_text(crate::i18n::tr(current.label())).show_ui(ui, |ui| {
         for st in lightcraft_catalog::CopyrightStatus::ALL {
             if ui.selectable_label(st == current, crate::i18n::tr(st.label())).clicked() && st != current {
@@ -823,7 +825,7 @@ fn copyright_status(app: &mut LightcraftApp, ui: &mut egui::Ui, current: lightcr
 
 fn meta_field(app: &mut LightcraftApp, ui: &mut egui::Ui, label: &str, key: &str, value: &str, lines: usize) {
     let t = Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(crate::i18n::tr(label)).size(11.5).color(t.text_dim));
+    ui.label(egui::RichText::new(crate::i18n::tr(label)).size(11.5 - crate::theme::FONT_SHRINK).color(t.text_dim));
     let id = egui::Id::new(("info-field", key));
     let mut text: String = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| value.to_string());
     let widget = format!("field:{key}");
@@ -1014,7 +1016,13 @@ fn keyword_set(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let r = ui
                 .add_sized(
                     [bw, 22.0],
-                    egui::Button::new(egui::RichText::new(short).size(11.5).color(if on { t.text } else { t.text_label })).selected(on).truncate(),
+                    egui::Button::new(egui::RichText::new(short).size(11.5 - crate::theme::FONT_SHRINK).color(if on {
+                        t.text
+                    } else {
+                        t.text_label
+                    }))
+                    .selected(on)
+                    .truncate(),
                 )
                 .on_hover_text(format!("{} — ⌥{}", k.replace('|', " › "), i + 1));
             register(ui.ctx(), format!("kwSet:{}", i + 1), r.rect);

@@ -764,7 +764,10 @@ fn folder_header(app: &mut LightcraftApp, ui: &mut egui::Ui, b: &lightcraft_engi
             ui.allocate_ui_with_layout(vec2(path_w, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 folder_breadcrumbs(app, ui, &b.path);
             });
-            let count = ui.add_sized(vec2(count_w, 24.0), egui::Label::new(egui::RichText::new(cnt).size(12.5).color(t.text_dim)).truncate());
+            let count = ui.add_sized(
+                vec2(count_w, 24.0),
+                egui::Label::new(egui::RichText::new(cnt).size(12.5 - crate::theme::FONT_SHRINK).color(t.text_dim)).truncate(),
+            );
             register(ui.ctx(), "grid:count", count.rect);
             count.on_hover_text(cnt);
         });
@@ -838,7 +841,7 @@ fn folder_breadcrumbs(app: &mut LightcraftApp, ui: &mut egui::Ui, path: &str) {
         let last = remaining == 1;
         // Share the bounded row among the remaining crumbs, leaving room for every separator.
         let width = ((ui.available_width() - separator_w * (remaining - 1) as f32) / remaining as f32).max(0.0).floor();
-        let text = egui::RichText::new(*part).size(13.0).color(if last { t.text } else { t.text_label });
+        let text = egui::RichText::new(*part).size(13.0 - crate::theme::FONT_SHRINK).color(if last { t.text } else { t.text_label });
         let r = ui.add_sized(vec2(width, 24.0), egui::Label::new(if last { text.strong() } else { text }).truncate().sense(Sense::click()));
         register(ui.ctx(), format!("crumb:{i}"), r.rect);
         if !last {
@@ -850,7 +853,7 @@ fn folder_breadcrumbs(app: &mut LightcraftApp, ui: &mut egui::Ui, path: &str) {
             {
                 let _ = app.run("library.browse", json!({"path": to}));
             }
-            ui.label(egui::RichText::new("›").size(13.0).color(t.text_dim));
+            ui.label(egui::RichText::new("›").size(13.0 - crate::theme::FONT_SHRINK).color(t.text_dim));
         }
         r.on_hover_text(path);
     }

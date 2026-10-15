@@ -40,7 +40,11 @@ pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
         d.insert_temp(search_id, search.clone());
         d.insert_temp(all_id, show_all);
     });
-    ui.label(RichText::new(crate::i18n::tr("Click a shortcut, then press the new keys (Esc cancels).")).size(11.0).color(t.text_dim));
+    ui.label(
+        RichText::new(crate::i18n::tr("Click a shortcut, then press the new keys (Esc cancels)."))
+            .size(11.0 - crate::theme::FONT_SHRINK)
+            .color(t.text_dim),
+    );
     ui.add_space(4.0);
 
     let needle = search.trim().to_lowercase();
@@ -122,7 +126,7 @@ fn row(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, b: &Bindable, sc:
             apply(app, ui.ctx(), serde_json::json!({"id": b.id, "reset": true}));
         }
     });
-    ui.label(RichText::new(b.id).size(10.5).color(t.text_dim));
+    ui.label(RichText::new(b.id).size(10.5 - crate::theme::FONT_SHRINK).color(t.text_dim));
     ui.end_row();
 }
 

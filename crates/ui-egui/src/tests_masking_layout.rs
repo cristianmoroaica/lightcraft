@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::{LightcraftApp, Services, headless::HeadlessView, i18n::Locale};
 
-const LONG_NAME: &str = "The person standing beside the very long fence across the background";
+const LONG_NAME: &str = "The person standing beside the very long wooden fence across the whole background";
 
 fn text_shapes(shape: &egui::Shape, out: &mut Vec<egui::epaint::TextShape>) {
     match shape {

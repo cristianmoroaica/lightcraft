@@ -12,6 +12,8 @@ use crate::widgets::lerp;
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Visuals};
 
 pub const FONT_SEMIBOLD: &str = "semibold";
+/// Every UI text is this many points smaller than its nominal size (the denser layout).
+pub const FONT_SHRINK: f32 = 1.0;
 const WEB_CHINESE_FONT: &str = "web Noto Sans CJK SC";
 
 /// Shared colour-label palette for badges, thumbnail surrounds and feedback.
@@ -268,10 +270,10 @@ impl Tokens {
         ctx.data(|d| d.get_temp::<Tokens>(egui::Id::NULL)).unwrap_or_default()
     }
     pub fn font(&self, size: f32) -> FontId {
-        FontId::proportional(size)
+        FontId::proportional(size - FONT_SHRINK)
     }
     pub fn semibold(&self, size: f32) -> FontId {
-        FontId::new(size, FontFamily::Name(FONT_SEMIBOLD.into()))
+        FontId::new(size - FONT_SHRINK, FontFamily::Name(FONT_SEMIBOLD.into()))
     }
 }
 
@@ -466,10 +468,10 @@ pub fn apply_kind(ctx: &egui::Context, kind: ThemeKind) {
         s.spacing.item_spacing = egui::vec2(6.0, 4.0);
         s.spacing.button_padding = egui::vec2(8.0, 3.0);
         s.spacing.interact_size.y = 22.0;
-        s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(13.0));
-        s.text_styles.insert(egui::TextStyle::Button, FontId::proportional(13.0));
-        s.text_styles.insert(egui::TextStyle::Small, FontId::proportional(11.0));
-        s.text_styles.insert(egui::TextStyle::Heading, FontId::new(16.0, FontFamily::Name(FONT_SEMIBOLD.into())));
+        s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(13.0 - FONT_SHRINK));
+        s.text_styles.insert(egui::TextStyle::Button, FontId::proportional(13.0 - FONT_SHRINK));
+        s.text_styles.insert(egui::TextStyle::Small, FontId::proportional(11.0 - FONT_SHRINK));
+        s.text_styles.insert(egui::TextStyle::Heading, FontId::new(16.0 - FONT_SHRINK, FontFamily::Name(FONT_SEMIBOLD.into())));
         s.animation_time = 0.12;
     });
 }

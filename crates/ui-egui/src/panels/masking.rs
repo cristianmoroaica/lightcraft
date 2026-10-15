@@ -509,7 +509,7 @@ fn range_controls(app: &mut LightcraftApp, ui: &mut egui::Ui, comp: usize, shape
     };
     match shape {
         MaskShape::LuminanceRange { lo, hi, lo_feather, hi_feather } => {
-            ui.label(egui::RichText::new(crate::i18n::tr("Select Luminance Range")).color(t.text_dim).size(11.5));
+            ui.label(egui::RichText::new(crate::i18n::tr("Select Luminance Range")).color(t.text_dim).size(11.5 - crate::theme::FONT_SHRINK));
             let (lo, hi) = (*lo, *hi);
             let w = ui.available_width().min(240.0);
             let (rect, resp) = ui.allocate_exact_size(vec2(w, 18.0), Sense::click_and_drag());
@@ -607,14 +607,16 @@ fn range_controls(app: &mut LightcraftApp, ui: &mut egui::Ui, comp: usize, shape
                 }
                 app.run("mask.update", json!({"component": comp, "shape": s}))
             });
-            ui.label(egui::RichText::new(crate::i18n::tr("− harder border · + softer border")).color(t.text_dim).size(11.0));
+            ui.label(
+                egui::RichText::new(crate::i18n::tr("− harder border · + softer border")).color(t.text_dim).size(11.0 - crate::theme::FONT_SHRINK),
+            );
         }
         MaskShape::ColorRange { samples, refine } => {
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(crate::i18n::tr_format!("{} sample{}", samples.len(), if samples.len() == 1 { "" } else { "s" }))
                         .color(t.text_dim)
-                        .size(11.5),
+                        .size(11.5 - crate::theme::FONT_SHRINK),
                 );
                 let picking = app.ui.tool == "colorRange";
                 if text_button(ui, &format!("colorPick{comp}"), crate::i18n::tr("Pick"), picking)

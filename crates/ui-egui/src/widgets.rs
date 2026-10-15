@@ -74,7 +74,7 @@ pub fn preview_only_notice(ui: &mut Ui, key: &str, reason: &str) {
                 ui.label(egui::RichText::new(crate::i18n::tr("Preview only")).font(t.semibold(12.5)).color(t.text));
             });
             ui.add_space(2.0);
-            ui.label(egui::RichText::new(preview_only_explanation(reason)).size(11.5).color(t.text_label));
+            ui.label(egui::RichText::new(preview_only_explanation(reason)).size(11.5 - crate::theme::FONT_SHRINK).color(t.text_label));
         })
         .response;
     let r = r.on_hover_text(crate::i18n::tr_format!("Decoder: {reason}", reason = reason));
@@ -232,9 +232,9 @@ pub(crate) fn shown_value(spec: &ControlSpec, v: f64) -> String {
 
 // ------------------------------------------------------------------ slider drags
 
-/// How far a dragged slider moves for the pointer's movement: three quarters of it (a tenth of that
+/// How far a dragged slider moves for the pointer's movement: two thirds of it (a tenth of that
 /// with Shift).
-pub const DRAG_SENSITIVITY: f64 = 0.75;
+pub const DRAG_SENSITIVITY: f64 = 0.66;
 
 /// Pointer travel (points) before a press on a slider becomes a drag; less is a click.
 const DRAG_THRESHOLD: f32 = 3.0;
@@ -903,9 +903,9 @@ mod tests {
     }
 
     #[test]
-    fn a_drag_moves_three_quarters_of_the_travel_and_stays_on_the_track() {
-        assert!((dragged_position(0.5, 100.0, 400.0, false) - (0.5 + 0.25 * 0.75)).abs() < 1e-9);
-        assert!((dragged_position(0.5, -100.0, 400.0, true) - (0.5 - 0.25 * 0.075)).abs() < 1e-9);
+    fn a_drag_moves_a_share_of_the_travel_and_stays_on_the_track() {
+        assert!((dragged_position(0.5, 100.0, 400.0, false) - (0.5 + 0.25 * DRAG_SENSITIVITY)).abs() < 1e-9);
+        assert!((dragged_position(0.5, -100.0, 400.0, true) - (0.5 - 0.25 * DRAG_SENSITIVITY * 0.1)).abs() < 1e-9);
         assert_eq!(dragged_position(0.9, 1000.0, 400.0, false), 1.0);
         assert_eq!(dragged_position(0.1, -1000.0, 400.0, false), 0.0);
         // a collapsed track or a bad delta leaves the position alone
