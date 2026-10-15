@@ -316,8 +316,8 @@ struct SliderGrab {
     travel: f32,
     /// Moved past [`DRAG_THRESHOLD`]: a drag, not a click.
     moved: bool,
-    /// The mouse's own movement arrives (it is used from then on).
-    raw: bool,
+    /// Frames left to wait for a pointer put back at `press` to land (its jump is not a movement).
+    warping: u8,
 }
 
 /// The track position `pos` moved by `dx` points of pointer travel along a track `width` wide.
@@ -459,20 +459,26 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
             && resp.is_pointer_button_down_on()
             && let Some(press) = ui.input(|i| i.pointer.press_origin())
         {
-            grab = Some(SliderGrab { press, pos: spec.position(value), travel: 0.0, moved: false, raw: false });
+            grab = Some(SliderGrab { press, pos: spec.position(value), travel: 0.0, moved: false, warping: 0 });
             hold_pointer(ui.ctx(), hold);
         }
         if let Some(mut g) = grab {
             if down && focused && enabled {
-                let (motion, delta, fine) = ui.input(|i| (i.pointer.motion(), i.pointer.delta(), i.modifiers.shift));
-                let dx = match motion {
-                    Some(m) if hold != PointerHold::None => {
-                        g.raw = true;
-                        m.x / ppp.max(0.1)
+                let (motion, delta, latest, area, fine) =
+                    ui.input(|i| (i.pointer.motion(), i.pointer.delta(), i.pointer.latest_pos(), i.content_rect(), i.modifiers.shift));
+                let dx = if hold == PointerHold::Lock {
+                    // a locked pointer stays put: only the mouse's own movement says how far it went
+                    motion.map_or(delta.x, |m| m.x / ppp.max(0.1))
+                } else if g.warping > 0 {
+                    if latest.is_some_and(|p| p.distance(g.press) < 2.0) {
+                        g.warping = 0;
+                    } else {
+                        g.warping -= 1;
                     }
-                    // a warped pointer jumps: once the mouse's movement arrives, only it counts
-                    _ if g.raw => 0.0,
-                    _ => delta.x,
+                    0.0
+                } else {
+                    // the pointer's own (accelerated) movement, as smooth as the desktop's
+                    delta.x
                 };
                 g.travel += dx.abs();
                 g.pos = dragged_position(g.pos, dx, track_rect.width(), fine);
@@ -487,9 +493,11 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
                         v = nv;
                     }
                 }
-                // a confined pointer goes back to where it was pressed before it meets the window's edge
-                if hold == PointerHold::Warp && g.raw && ui.input(|i| i.pointer.latest_pos()).is_some_and(|p| p.distance(g.press) > 32.0) {
+                // a confined pointer goes back to where it was pressed only as it nears the window's edge,
+                // so a drag rarely has a frame where the jump back is skipped
+                if hold == PointerHold::Warp && g.warping == 0 && latest.is_some_and(|p| p.x < area.left() + 48.0 || p.x > area.right() - 48.0) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::CursorPosition(g.press));
+                    g.warping = 6;
                 }
                 ui.data_mut(|m| m.insert_temp(grab_id, g));
                 let frame = ui.ctx().cumulative_frame_nr();

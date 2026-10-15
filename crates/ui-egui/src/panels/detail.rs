@@ -850,10 +850,12 @@ fn info_overlay(app: &LightcraftApp, p: &egui::Painter, canvas: Rect, photo: &li
     let mut y = canvas.top() + 12.0;
     for (i, l) in lines.iter().enumerate() {
         let font = if i == 0 { t.semibold(15.0) } else { t.font(12.5) };
-        let g = p.layout_no_wrap(l.clone(), font, Color32::WHITE);
+        let g = p.layout_no_wrap(l.clone(), font.clone(), Color32::WHITE);
         let at = pos2(canvas.left() + 14.0, y);
-        // a soft shadow keeps the text readable on bright photos
-        p.galley(at + vec2(1.0, 1.0), g.clone(), Color32::from_black_alpha(200));
+        // a soft dark shadow keeps the text readable on bright photos (its own galley: a galley
+        // keeps the colour it was laid out with, so drawing `g` again drew a second white copy)
+        let shadow = p.layout_no_wrap(l.clone(), font, Color32::from_black_alpha(170));
+        p.galley(at + vec2(0.0, 1.0), shadow, Color32::from_black_alpha(170));
         p.galley(at, g.clone(), Color32::WHITE);
         y += g.size().y + 3.0;
     }
