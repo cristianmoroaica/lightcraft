@@ -553,6 +553,21 @@ pub fn apply_kind(ctx: &egui::Context, kind: ThemeKind) {
         s.spacing.item_spacing = egui::vec2(6.0, 4.0);
         s.spacing.button_padding = egui::vec2(8.0, 3.0);
         s.spacing.interact_size.y = 22.0;
+        // slim floating scroll bars: a 3 pt handle with no track while the area is hovered, 6 pt
+        // when the bar itself is, hidden otherwise (egui's 10 pt bar with a dark track was heavy)
+        s.spacing.scroll = egui::style::ScrollStyle {
+            bar_width: 6.0,
+            floating_width: 3.0,
+            bar_inner_margin: 2.0,
+            foreground_color: false,
+            dormant_background_opacity: 0.0,
+            active_background_opacity: 0.0,
+            interact_background_opacity: 0.0,
+            dormant_handle_opacity: 0.0,
+            active_handle_opacity: 0.45,
+            interact_handle_opacity: 0.8,
+            ..egui::style::ScrollStyle::floating()
+        };
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(13.0 - FONT_SHRINK));
         s.text_styles.insert(egui::TextStyle::Button, FontId::proportional(13.0 - FONT_SHRINK));
         s.text_styles.insert(egui::TextStyle::Small, FontId::proportional(11.0 - FONT_SHRINK));
