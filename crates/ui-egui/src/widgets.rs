@@ -329,6 +329,27 @@ fn dragged_position(pos: f64, dx: f32, width: f32, fine: bool) -> f64 {
     (pos + f64::from(dx / width) * gain).clamp(0.0, 1.0)
 }
 
+/// The theme's aurora, if it has one: a faint glow across the top of `rect`, one colour at each end,
+/// fading out downwards. Drawn behind the photo grid.
+pub fn aurora(ui: &Ui, rect: Rect) {
+    let Some([left, right]) = Tokens::get(ui.ctx()).aurora else {
+        return;
+    };
+    let h = rect.height().min(280.0);
+    if !(h > 0.0 && rect.width() > 0.0) {
+        return;
+    }
+    let band = Rect::from_min_size(rect.min, vec2(rect.width(), h));
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(band.left_top(), left);
+    mesh.colored_vertex(band.right_top(), right);
+    mesh.colored_vertex(band.right_bottom(), Color32::TRANSPARENT);
+    mesh.colored_vertex(band.left_bottom(), Color32::TRANSPARENT);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    ui.painter().add(egui::Shape::mesh(mesh));
+}
+
 /// A Lightroom slider row (label + value above a track with a hollow ring thumb).
 /// Double-click the label or thumb to reset. Shift-drag = fine adjustment. Click the value to
 /// type one: Return or clicking away applies it, Esc keeps the old one.

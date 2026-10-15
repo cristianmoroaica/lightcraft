@@ -498,9 +498,11 @@ fn expanded(app: &LightcraftApp, name: &str) -> Option<Vec<MenuNode>> {
             .collect();
             v.push(item("view.appearance", Value::Null, "Next Appearance Mode", None, true, None));
             // the saved theme of each family is checked
-            for group in [[ThemeKind::Charcoal, ThemeKind::Midnight], [ThemeKind::Silver, ThemeKind::Paper]] {
+            for group in
+                [&[ThemeKind::Charcoal, ThemeKind::Midnight, ThemeKind::Aether, ThemeKind::Ember][..], &[ThemeKind::Silver, ThemeKind::Paper][..]]
+            {
                 v.push(MenuNode::Separator);
-                for k in group {
+                for &k in group {
                     let on = if k.is_dark() { s.dark_theme.kind() == k } else { s.light_theme.kind() == k };
                     v.push(item("view.theme", json!({"theme": k.id()}), k.label(), None, true, Some(on)));
                 }

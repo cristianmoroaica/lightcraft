@@ -80,6 +80,9 @@ pub struct Tokens {
     /// Cautionary notices (e.g. a raw shown from its embedded preview): a muted amber.
     pub caution: Color32,
     pub mask_overlay: Color32,
+    /// A faint two-colour glow at the top of the photo grid (left and right ends), in the themes
+    /// that have one.
+    pub aurora: Option<[Color32; 2]>,
     // metrics (points)
     pub top_bar_h: f32,
     pub bottom_bar_h: f32,
@@ -96,15 +99,20 @@ pub enum ThemeKind {
     #[default]
     Charcoal,
     Midnight,
+    /// Cool violet-charcoal with a turquoise accent and brass stars.
+    Aether,
+    /// Warm charcoal-brown with an amber accent.
+    Ember,
     Silver,
     Paper,
 }
 
 impl ThemeKind {
-    pub const ALL: [ThemeKind; 4] = [ThemeKind::Charcoal, ThemeKind::Midnight, ThemeKind::Silver, ThemeKind::Paper];
+    pub const ALL: [ThemeKind; 6] =
+        [ThemeKind::Charcoal, ThemeKind::Midnight, ThemeKind::Aether, ThemeKind::Ember, ThemeKind::Silver, ThemeKind::Paper];
 
     pub fn is_dark(self) -> bool {
-        matches!(self, ThemeKind::Charcoal | ThemeKind::Midnight)
+        matches!(self, ThemeKind::Charcoal | ThemeKind::Midnight | ThemeKind::Aether | ThemeKind::Ember)
     }
 
     /// The theme's id (settings value and command suffix).
@@ -112,6 +120,8 @@ impl ThemeKind {
         match self {
             ThemeKind::Charcoal => "charcoal",
             ThemeKind::Midnight => "midnight",
+            ThemeKind::Aether => "aether",
+            ThemeKind::Ember => "ember",
             ThemeKind::Silver => "silver",
             ThemeKind::Paper => "paper",
         }
@@ -122,6 +132,8 @@ impl ThemeKind {
         match self {
             ThemeKind::Charcoal => "Charcoal",
             ThemeKind::Midnight => "Midnight",
+            ThemeKind::Aether => "Aether",
+            ThemeKind::Ember => "Ember",
             ThemeKind::Silver => "Silver",
             ThemeKind::Paper => "Paper",
         }
@@ -162,6 +174,7 @@ impl Default for Tokens {
             reject: Color32::from_rgb(0xe0, 0x4a, 0x4a),
             caution: Color32::from_rgb(0xe3, 0xa8, 0x3c),
             mask_overlay: Color32::from_rgba_unmultiplied(0xe0, 0x20, 0x30, 110),
+            aurora: None,
             top_bar_h: 42.0,
             bottom_bar_h: 48.0,
             panel_w: 270.0,
@@ -195,6 +208,78 @@ impl Tokens {
                 hover: rgb(0x2e2e2e),
                 pressed: rgb(0x343434),
                 tool_active: rgb(0x343434),
+                ..base
+            },
+            // Aether: frosted violet-charcoal over a brass-and-turquoise aurora. `accent` is the deep
+            // turquoise (white text sits on it), `focus` and the slider fill the light mint.
+            ThemeKind::Aether => Tokens {
+                chrome: rgb(0x1e1d24),
+                canvas: rgb(0x16151b),
+                grid_bg: rgb(0x0f0e13),
+                cell: rgb(0x16151b),
+                cell_selected: rgb(0x2a2933),
+                divider: rgb(0x121117),
+                inset: rgb(0x1a1920),
+                field: rgb(0x19181f),
+                field_border: rgb(0x34333d),
+                button: rgb(0x1c1b22),
+                button_border: rgb(0x3f3e4a),
+                hover: rgb(0x2c2b35),
+                pressed: rgb(0x33323d),
+                tool_active: rgb(0x33323d),
+                text: rgb(0xe4e3ea),
+                text_label: rgb(0xb9b8c2),
+                text_dim: rgb(0x86858f),
+                text_disabled: rgb(0x55545e),
+                icon: rgb(0x95949f),
+                track: rgb(0x3d3c48),
+                track_fill: rgb(0x82dcb4),
+                thumb: rgb(0xd6d5dd),
+                thumb_hover: rgb(0xf7f6fb),
+                accent: rgb(0x1f8a78),
+                focus: rgb(0x82dcb4),
+                star: rgb(0xd4a24e),
+                pick: rgb(0xf0f0f4),
+                reject: rgb(0xff6464),
+                caution: rgb(0xffc850),
+                // antique brass ↔ antique turquoise
+                aurora: Some([Color32::from_rgba_unmultiplied(0xd4, 0xa2, 0x4e, 34), Color32::from_rgba_unmultiplied(0x00, 0x8c, 0x8c, 46)]),
+                ..base
+            },
+            // Ember: warm charcoal-brown glass over ember-red and gold. `accent` is a copper white
+            // text sits on, `focus` and the slider fill the amber.
+            ThemeKind::Ember => Tokens {
+                chrome: rgb(0x241b17),
+                canvas: rgb(0x1a1310),
+                grid_bg: rgb(0x120d0b),
+                cell: rgb(0x1a1310),
+                cell_selected: rgb(0x33261f),
+                divider: rgb(0x15100d),
+                inset: rgb(0x1e1612),
+                field: rgb(0x1d1511),
+                field_border: rgb(0x3d302a),
+                button: rgb(0x201814),
+                button_border: rgb(0x4a3a31),
+                hover: rgb(0x352821),
+                pressed: rgb(0x3d2e26),
+                tool_active: rgb(0x3d2e26),
+                text: rgb(0xeee4d8),
+                text_label: rgb(0xc7bbae),
+                text_dim: rgb(0x948879),
+                text_disabled: rgb(0x5e544b),
+                icon: rgb(0xa3968a),
+                track: rgb(0x4a3b33),
+                track_fill: rgb(0xf0b060),
+                thumb: rgb(0xe6d9cb),
+                thumb_hover: rgb(0xfff4e8),
+                accent: rgb(0xb4561e),
+                focus: rgb(0xf0b060),
+                star: rgb(0xf0c050),
+                pick: rgb(0xfff4e8),
+                reject: rgb(0xff6a50),
+                caution: rgb(0xf0c050),
+                // ember red-orange ↔ deep antique gold
+                aurora: Some([Color32::from_rgba_unmultiplied(0xcc, 0x47, 0x1a, 38), Color32::from_rgba_unmultiplied(0x8c, 0x61, 0x14, 40)]),
                 ..base
             },
             ThemeKind::Silver => Tokens {

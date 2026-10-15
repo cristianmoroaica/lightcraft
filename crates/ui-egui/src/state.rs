@@ -199,6 +199,8 @@ pub enum DarkTheme {
     #[default]
     Charcoal,
     Midnight,
+    Aether,
+    Ember,
 }
 
 /// The theme the light appearance uses.
@@ -211,11 +213,13 @@ pub enum LightTheme {
 }
 
 impl DarkTheme {
-    pub const ALL: [DarkTheme; 2] = [DarkTheme::Charcoal, DarkTheme::Midnight];
+    pub const ALL: [DarkTheme; 4] = [DarkTheme::Charcoal, DarkTheme::Midnight, DarkTheme::Aether, DarkTheme::Ember];
     pub fn kind(self) -> crate::theme::ThemeKind {
         match self {
             DarkTheme::Charcoal => crate::theme::ThemeKind::Charcoal,
             DarkTheme::Midnight => crate::theme::ThemeKind::Midnight,
+            DarkTheme::Aether => crate::theme::ThemeKind::Aether,
+            DarkTheme::Ember => crate::theme::ThemeKind::Ember,
         }
     }
 }
@@ -407,6 +411,8 @@ impl AppSettings {
         match kind {
             ThemeKind::Charcoal => self.dark_theme = DarkTheme::Charcoal,
             ThemeKind::Midnight => self.dark_theme = DarkTheme::Midnight,
+            ThemeKind::Aether => self.dark_theme = DarkTheme::Aether,
+            ThemeKind::Ember => self.dark_theme = DarkTheme::Ember,
             ThemeKind::Silver => self.light_theme = LightTheme::Silver,
             ThemeKind::Paper => self.light_theme = LightTheme::Paper,
         }

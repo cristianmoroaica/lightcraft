@@ -459,7 +459,10 @@ pub fn show(app: &mut crate::LightcraftApp, ui: &mut egui::Ui) {
         };
         crate::panels::compare::prepare(app);
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(bg)).show(ui, |ui| match app.ui.view {
-            crate::state::ViewMode::PhotoGrid | crate::state::ViewMode::SquareGrid => crate::panels::grid::show(app, ui),
+            crate::state::ViewMode::PhotoGrid | crate::state::ViewMode::SquareGrid => {
+                crate::widgets::aurora(ui, ui.max_rect());
+                crate::panels::grid::show(app, ui)
+            }
             crate::state::ViewMode::Detail => crate::panels::detail::show(app, ui),
             crate::state::ViewMode::Compare => crate::panels::compare::show_compare(app, ui),
             crate::state::ViewMode::Survey => crate::panels::compare::show_survey(app, ui),
