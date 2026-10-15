@@ -319,7 +319,7 @@ pub(crate) fn follow_changed(
 }
 
 /// Height of a date header row (points).
-pub const HEADER_H: f32 = 40.0;
+pub const HEADER_H: f32 = 34.0;
 
 /// Cell rectangles (one per photo, in order), date-header rectangles (one per group, top to
 /// bottom), the rows of cells (top to bottom, for finding the visible ones by binary search) and

@@ -164,8 +164,8 @@ impl Default for Tokens {
             bottom_bar_h: 48.0,
             panel_w: 270.0,
             strip_w: 48.0,
-            slider_row_h: 45.0,
-            section_h: 57.0,
+            slider_row_h: 34.0,
+            section_h: 44.0,
             film_h: 142.0,
         }
     }

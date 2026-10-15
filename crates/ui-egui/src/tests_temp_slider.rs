@@ -89,11 +89,13 @@ fn the_kelvin_temp_slider_has_lightrooms_scale() {
     assert_eq!(h.request("ui.clickWidget", json!({"id": "slider:wb.temp", "fx": 0.5}), T)["ok"], true);
     h.settle(SETTLE);
     assert_eq!(develop(&h).wb.temp, 7000.0, "a click in the middle of the track");
-    // drag from As Shot on a Z 6II NEF (about 4850 K, 28 % along the track) to the middle
+    // drag from As Shot on a Z 6II NEF (about 4850 K, 28 % along the track) to the middle: the thumb moves
+    // three quarters of the pointer's travel (`DRAG_SENSITIVITY`)
     set(&mut h, "wb.temp", 4850.0);
     let track = widget(&h, "slider:wb.temp");
     let from = track.left() + thumb(&h, "wb.temp") * track.width();
-    let r = h.request("ui.drag", json!({"x": from, "y": track.center().y, "toX": track.center().x, "toY": track.center().y, "steps": 12}), T);
+    let to = from + (track.center().x - from) / crate::widgets::DRAG_SENSITIVITY as f32;
+    let r = h.request("ui.drag", json!({"x": from, "y": track.center().y, "toX": to, "toY": track.center().y, "steps": 12}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);
     let k = develop(&h).wb.temp;
@@ -127,4 +129,22 @@ fn the_relative_temp_slider_stays_linear() {
     let k = develop(&h).wb.temp;
     let rel = (1e6 / 6500.0 - 1e6 / k) / 0.8;
     assert!((rel - 50.0).abs() < 0.6, "{k} K is {rel} on the relative scale");
+}
+
+/// A drag moves the slider by three quarters of the pointer's travel from where it was, wherever on the
+/// track it starts: the thumb does not jump to the pointer.
+#[test]
+fn a_drag_moves_the_slider_by_three_quarters_of_the_pointer_travel() {
+    let mut h = edit_panel(true);
+    set(&mut h, "light.exposure", 0.0);
+    let track = widget(&h, "slider:light.exposure");
+    // pressed a quarter of the way along (−2.5 if it jumped), then moved a fifth of the track right
+    let from = track.left() + 0.25 * track.width();
+    let r =
+        h.request("ui.drag", json!({"x": from, "y": track.center().y, "toX": from + 0.2 * track.width(), "toY": track.center().y, "steps": 10}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    // 0.2 × 0.75 of the 10-stop range
+    let ev = develop(&h).light.exposure;
+    assert!((ev - 1.5).abs() <= 0.06, "dragged to {ev}");
 }

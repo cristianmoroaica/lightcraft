@@ -104,9 +104,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     }
     // header: Edit + Auto / B&W / HDR
     let mut reset_clicked = false;
-    let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
-    ui.painter().text(pos2(hr.left() + 24.0, hr.bottom() - 10.0), Align2::LEFT_CENTER, crate::i18n::tr("Edit"), t.semibold(15.0), t.text);
-    egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 8, bottom: 14 }).show(ui, |ui| {
+    let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
+    ui.painter().text(pos2(hr.left() + 24.0, hr.bottom() - 8.0), Align2::LEFT_CENTER, crate::i18n::tr("Edit"), t.semibold(15.0), t.text);
+    egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 6, bottom: 10 }).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             if text_button(ui, "auto", crate::i18n::tr("Auto"), false).clicked() {
@@ -155,7 +155,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     }
     divider(ui);
     // profile row
-    egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 14, bottom: 14 }).show(ui, |ui| {
+    egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 8, bottom: 8 }).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(crate::i18n::tr("Profile")).font(t.font(13.0)).color(t.text_dim));
             let name = app.session.profile_info(&d.profile.id).map(|(name, _)| name).unwrap_or("Color");
@@ -514,8 +514,8 @@ fn profile_menu(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings)
 
 pub fn sub_title(ui: &mut egui::Ui, title: &str) {
     let t = Tokens::get(ui.ctx());
-    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
-    ui.painter().text(pos2(r.left() + 24.0, r.center().y + 4.0), Align2::LEFT_CENTER, crate::i18n::tr(title), t.semibold(13.0), t.text_label);
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
+    ui.painter().text(pos2(r.left() + 24.0, r.center().y + 3.0), Align2::LEFT_CENTER, crate::i18n::tr(title), t.semibold(13.0), t.text_label);
 }
 
 fn section(

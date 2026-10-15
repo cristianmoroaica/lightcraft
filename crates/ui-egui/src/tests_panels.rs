@@ -278,7 +278,7 @@ fn the_sidebar_draws_its_sections_as_arranged() {
     for id in &drawn {
         let header = widget(&h, &format!("sidebarSection:{id}"));
         let above = rows.iter().rev().find(|r| r.top() < header.top()).map(|r| r.bottom()).unwrap();
-        assert_eq!(header.top() - above, 10.0, "{id}");
+        assert_eq!(header.top() - above, crate::panels::left::SECTION_GAP, "{id}");
     }
 }
 
@@ -611,7 +611,7 @@ fn recently_deleted_is_listed_with_my_photos() {
     let (picks, deleted) = (widget(&h, "source:picks"), widget(&h, "source:recentlyDeleted"));
     assert_eq!(deleted.top(), picks.bottom(), "no gap: the same group");
     let first = sections_drawn(&h).remove(0);
-    assert_eq!(header(&h, &first).top() - deleted.bottom(), 10.0, "the sections start below it");
+    assert_eq!(header(&h, &first).top() - deleted.bottom(), crate::panels::left::SECTION_GAP, "the sections start below it");
 }
 
 /// An arrangement set through the control channel is checked: a wrong one is refused and leaves

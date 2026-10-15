@@ -22,7 +22,7 @@ pub(crate) fn content_width(ctx: &egui::Context) -> f32 {
 const MAX_NAME_NEED: f32 = 140.0;
 
 /// Height of a sidebar row.
-const ROW_HEIGHT: f32 = 29.0;
+const ROW_HEIGHT: f32 = 25.0;
 
 /// Temp-data key of the row (its widget id after `source:`, lower-case) the sidebar scrolls to
 /// this frame: set before the sections are drawn, cleared after.
@@ -220,9 +220,9 @@ fn triangle_points(c: egui::Pos2, open: bool) -> Vec<egui::Pos2> {
 }
 
 /// Space above a section's header.
-const SECTION_GAP: f32 = 10.0;
+pub(crate) const SECTION_GAP: f32 = 6.0;
 /// Height of a section's header.
-const SECTION_HEADER: f32 = 34.0;
+const SECTION_HEADER: f32 = 30.0;
 
 /// One sidebar section: the gap above it, its header, and (while it is open) the rows `body`
 /// draws. Every section goes through here, so they all fold, space and announce themselves alike.
@@ -600,7 +600,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     frame.show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         // the title offers the sections' menu too: where hidden sections come back from
-        let (hr, title) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::click());
+        let (hr, title) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), Sense::click());
         register(ui.ctx(), "sidebarTitle", hr);
         title.context_menu(|ui| sections_menu(app, ui, None));
         // the open library's name under the title, so nobody edits in the wrong one (issue #902)

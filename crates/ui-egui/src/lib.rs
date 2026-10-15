@@ -991,6 +991,7 @@ impl LightcraftApp {
         let t0 = now_ms();
         panels::library_problem::logic(self);
         self.logic_inner(ctx);
+        widgets::release_stale_pointer_hold(ctx);
         self.perf.logic_ms = now_ms() - t0;
     }
 

@@ -230,6 +230,105 @@ pub(crate) fn shown_value(spec: &ControlSpec, v: f64) -> String {
     if shown == "+0" || shown == "-0" { "0".to_string() } else { shown }
 }
 
+// ------------------------------------------------------------------ slider drags
+
+/// How far a dragged slider moves for the pointer's movement: three quarters of it (a tenth of that
+/// with Shift).
+pub const DRAG_SENSITIVITY: f64 = 0.75;
+
+/// Pointer travel (points) before a press on a slider becomes a drag; less is a click.
+const DRAG_THRESHOLD: f32 = 3.0;
+
+/// How the window holds the pointer while a slider is dragged. The pointer is hidden and the slider
+/// follows the mouse's own movement, so a drag never runs into the screen edge and the pointer comes
+/// back on the thumb when the button is released.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PointerHold {
+    /// Not held (headless, tests): the slider follows the pointer's movement.
+    #[default]
+    None,
+    /// Locked in place (Wayland, macOS).
+    Lock,
+    /// Confined to the window and put back where it was pressed (X11, Windows: no locking there).
+    Warp,
+}
+
+fn pointer_hold_key() -> egui::Id {
+    egui::Id::new("lc-pointer-hold")
+}
+
+fn held_key() -> egui::Id {
+    egui::Id::new("lc-pointer-held")
+}
+
+/// Set how this window holds the pointer during slider drags (the desktop app, once at start).
+pub fn set_pointer_hold(ctx: &egui::Context, hold: PointerHold) {
+    ctx.data_mut(|d| d.insert_temp(pointer_hold_key(), hold));
+}
+
+fn pointer_hold(ctx: &egui::Context) -> PointerHold {
+    ctx.data(|d| d.get_temp(pointer_hold_key())).unwrap_or_default()
+}
+
+fn hold_pointer(ctx: &egui::Context, hold: PointerHold) {
+    let grab = match hold {
+        PointerHold::None => return,
+        PointerHold::Lock => egui::CursorGrab::Locked,
+        PointerHold::Warp => egui::CursorGrab::Confined,
+    };
+    ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(false));
+    ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(grab));
+    let frame = ctx.cumulative_frame_nr();
+    ctx.data_mut(|d| d.insert_temp(held_key(), frame));
+}
+
+/// Show the pointer again, at `at` (the thumb) when given.
+fn release_pointer(ctx: &egui::Context, hold: PointerHold, at: Option<egui::Pos2>) {
+    if hold == PointerHold::None || ctx.data(|d| d.get_temp::<u64>(held_key())).is_none() {
+        return;
+    }
+    // placed while still locked: Wayland moves a pointer only while it is locked
+    if let Some(at) = at {
+        ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(at));
+    }
+    ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
+    ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(true));
+    ctx.data_mut(|d| d.remove::<u64>(held_key()));
+}
+
+/// Give the pointer back if the slider that held it was not drawn last frame (its panel closed
+/// mid-drag). Called once a frame.
+pub fn release_stale_pointer_hold(ctx: &egui::Context) {
+    let held: Option<u64> = ctx.data(|d| d.get_temp(held_key()));
+    if held.is_some_and(|f| ctx.cumulative_frame_nr().saturating_sub(f) > 1) {
+        release_pointer(ctx, pointer_hold(ctx), None);
+    }
+}
+
+/// A press on a slider's track, until the button is released.
+#[derive(Clone, Copy, Debug)]
+struct SliderGrab {
+    /// Where the button went down.
+    press: egui::Pos2,
+    /// The unrounded track position (0–1) the movement so far leads to.
+    pos: f64,
+    /// Pointer travel so far, in points.
+    travel: f32,
+    /// Moved past [`DRAG_THRESHOLD`]: a drag, not a click.
+    moved: bool,
+    /// The mouse's own movement arrives (it is used from then on).
+    raw: bool,
+}
+
+/// The track position `pos` moved by `dx` points of pointer travel along a track `width` wide.
+fn dragged_position(pos: f64, dx: f32, width: f32, fine: bool) -> f64 {
+    if width <= 0.0 || !dx.is_finite() {
+        return pos;
+    }
+    let gain = DRAG_SENSITIVITY * if fine { 0.1 } else { 1.0 };
+    (pos + f64::from(dx / width) * gain).clamp(0.0, 1.0)
+}
+
 /// A Lightroom slider row (label + value above a track with a hollow ring thumb).
 /// Double-click the label or thumb to reset. Shift-drag = fine adjustment. Click the value to
 /// type one: Return or clicking away applies it, Esc keeps the old one.
@@ -239,8 +338,8 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
     let (row, _) = ui.allocate_exact_size(vec2(w, t.slider_row_h), Sense::hover());
     let pad_l = 24.0;
     let pad_r = 22.0;
-    let label_rect = Rect::from_min_size(pos2(row.left() + pad_l, row.top() + 4.0), vec2(w - pad_l - pad_r, 18.0));
-    let track_rect = Rect::from_min_max(pos2(row.left() + pad_l, row.top() + 22.0), pos2(row.right() - pad_r, row.top() + 40.0));
+    let label_rect = Rect::from_min_size(pos2(row.left() + pad_l, row.top() + 1.0), vec2(w - pad_l - pad_r, 16.0));
+    let track_rect = Rect::from_min_max(pos2(row.left() + pad_l, row.top() + 17.0), pos2(row.right() - pad_r, row.top() + 33.0));
     let id = ui.id().with(spec.id);
     let resp = ui.interact(track_rect.expand2(vec2(8.0, 2.0)), id, if enabled { Sense::click_and_drag() } else { Sense::hover() });
     // A click selects the slider for arrow/wheel adjustments. Keep scroll-to-adjust
@@ -249,7 +348,7 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
     if enabled && resp.gained_focus() {
         ui.data_mut(|d| d.insert_temp(focused_slider_key(), id));
     }
-    if enabled && (resp.clicked() || resp.drag_started()) {
+    if enabled && (resp.clicked() || resp.drag_started() || resp.is_pointer_button_down_on()) {
         resp.request_focus();
         ui.data_mut(|d| d.insert_temp(focused_slider_key(), id));
     }
@@ -296,6 +395,9 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
     let to_x = |v: f64| track_rect.left() + spec.position(v) as f32 * track_rect.width();
     let from_x = |x: f32| spec.value_at(f64::from((x - track_rect.left()) / track_rect.width()));
     let mut v = value;
+    let hold = pointer_hold(ui.ctx());
+    let grab_id = id.with("lc-grab");
+    let mut grab: Option<SliderGrab> = ui.data(|m| m.get_temp(grab_id));
     if let Some((mut text, frames, pressed)) = typing.take() {
         // Keep the owned opening release focused without restarting its draft or selection.
         // egui gives that release's click to the readout, so the field under it gives up the focus
@@ -339,44 +441,73 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
         out.reset = true;
         out.value = Some(spec.default);
         v = spec.default;
+        if grab.take().is_some() {
+            ui.data_mut(|m| m.remove::<SliderGrab>(grab_id));
+            release_pointer(ui.ctx(), hold, Some(pos2(to_x(v), track_rect.center().y)));
+        }
     } else {
-        if resp.drag_started() {
-            out.drag_started = true;
-        }
-        if (resp.dragged() || resp.drag_started())
-            && let Some(p) = resp.interact_pointer_pos()
+        // A press holds the pointer (hidden, see `PointerHold`); moving it moves the slider by
+        // DRAG_SENSITIVITY of the movement from where it was, and releasing without moving is a click
+        // that puts the value where the track was pressed. The unrounded position is kept, so a slow
+        // drag adds up instead of rounding back to the same step every frame.
+        let step = spec.step.max(1e-9);
+        let snap = |p: f64| ((spec.value_at(p) / step).round() * step).clamp(spec.min, spec.max);
+        let (down, pressed_now, focused, ppp) = ui.input(|i| (i.pointer.primary_down(), i.pointer.primary_pressed(), i.focused, i.pixels_per_point));
+        if enabled
+            && grab.is_none()
+            && pressed_now
+            && resp.is_pointer_button_down_on()
+            && let Some(press) = ui.input(|i| i.pointer.press_origin())
         {
-            let fine = ui.input(|i| i.modifiers.shift);
-            let step = spec.step.max(1e-9);
-            let nv = if fine {
-                // a tenth of the pointer's movement along the track; the unrounded position is kept, so a
-                // slow drag adds up instead of rounding back to the same step every frame
-                let fine_id = id.with("fine-pos");
-                let dx = ui.input(|i| i.pointer.delta().x);
-                let kept = ui.data(|m| m.get_temp::<f64>(fine_id)).filter(|&p| ((spec.value_at(p) / step).round() * step - value).abs() < step / 2.0);
-                let pos = (kept.unwrap_or_else(|| spec.position(value)) + f64::from(dx / track_rect.width()) * 0.1).clamp(0.0, 1.0);
-                ui.data_mut(|m| m.insert_temp(fine_id, pos));
-                spec.value_at(pos)
+            grab = Some(SliderGrab { press, pos: spec.position(value), travel: 0.0, moved: false, raw: false });
+            hold_pointer(ui.ctx(), hold);
+        }
+        if let Some(mut g) = grab {
+            if down && focused && enabled {
+                let (motion, delta, fine) = ui.input(|i| (i.pointer.motion(), i.pointer.delta(), i.modifiers.shift));
+                let dx = match motion {
+                    Some(m) if hold != PointerHold::None => {
+                        g.raw = true;
+                        m.x / ppp.max(0.1)
+                    }
+                    // a warped pointer jumps: once the mouse's movement arrives, only it counts
+                    _ if g.raw => 0.0,
+                    _ => delta.x,
+                };
+                g.travel += dx.abs();
+                g.pos = dragged_position(g.pos, dx, track_rect.width(), fine);
+                if !g.moved && g.travel >= DRAG_THRESHOLD {
+                    g.moved = true;
+                    out.drag_started = true;
+                }
+                if g.moved {
+                    let nv = snap(g.pos);
+                    if (nv - value).abs() > 1e-12 {
+                        out.value = Some(nv);
+                        v = nv;
+                    }
+                }
+                // a confined pointer goes back to where it was pressed before it meets the window's edge
+                if hold == PointerHold::Warp && g.raw && ui.input(|i| i.pointer.latest_pos()).is_some_and(|p| p.distance(g.press) > 32.0) {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::CursorPosition(g.press));
+                }
+                ui.data_mut(|m| m.insert_temp(grab_id, g));
+                let frame = ui.ctx().cumulative_frame_nr();
+                ui.data_mut(|m| m.insert_temp(held_key(), frame));
             } else {
-                from_x(p.x)
-            };
-            let nv = ((nv / step).round() * step).clamp(spec.min, spec.max);
-            if (nv - value).abs() > 1e-12 {
-                out.value = Some(nv);
-                v = nv;
+                if g.moved {
+                    out.drag_stopped = true;
+                } else if enabled && !down {
+                    let nv = ((from_x(g.press.x) / step).round() * step).clamp(spec.min, spec.max);
+                    out.value = Some(nv);
+                    v = nv;
+                    out.drag_started = true;
+                    out.drag_stopped = true;
+                }
+                ui.data_mut(|m| m.remove::<SliderGrab>(grab_id));
+                release_pointer(ui.ctx(), hold, Some(pos2(to_x(v), track_rect.center().y)));
+                grab = None;
             }
-        } else if resp.clicked()
-            && let Some(p) = resp.interact_pointer_pos()
-        {
-            let step = spec.step.max(1e-9);
-            let nv = ((from_x(p.x) / step).round() * step).clamp(spec.min, spec.max);
-            out.value = Some(nv);
-            v = nv;
-            out.drag_started = true;
-            out.drag_stopped = true;
-        }
-        if resp.drag_stopped() {
-            out.drag_stopped = true;
         }
         // a screen reader's increment / decrement (VoiceOver: Ctrl-Option-Up / Down)
         let (inc, dec) = ui.input(|i| {
@@ -435,7 +566,7 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
         }
     }
     // paint
-    let dragging = resp.dragged() && enabled;
+    let dragging = enabled && grab.is_some_and(|g| g.moved);
     let hovered = (resp.hovered() || ui.rect_contains_pointer(row)) && enabled;
     let hover_t = anim(ui, id.with("lc-hover"), hovered || dragging);
     let drag_t = anim(ui, id.with("lc-drag"), dragging);
@@ -524,7 +655,7 @@ pub fn section_header(ui: &mut Ui, id: &str, title: &str, open: bool, enabled: O
     let title = crate::i18n::tr(title);
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width();
-    let (r, resp) = ui.allocate_exact_size(vec2(w, 52.0), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(vec2(w, 40.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::CollapsingHeader, true, open, title));
     register(ui.ctx(), format!("section:{id}"), r);
     let h = anim(ui, resp.id.with("lc-hover"), ui.rect_contains_pointer(r));
@@ -572,8 +703,8 @@ pub fn flyout_row(ui: &mut Ui, id: &str, title: &str, icon: Icon, open: bool) ->
     let title = crate::i18n::tr(title);
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width();
-    let (outer, _) = ui.allocate_exact_size(vec2(w, 40.0), Sense::hover());
-    let r = Rect::from_min_max(pos2(outer.left() + 16.0, outer.top() + 4.0), pos2(outer.right() - 16.0, outer.bottom() - 4.0));
+    let (outer, _) = ui.allocate_exact_size(vec2(w, 34.0), Sense::hover());
+    let r = Rect::from_min_max(pos2(outer.left() + 16.0, outer.top() + 3.0), pos2(outer.right() - 16.0, outer.bottom() - 3.0));
     let resp = ui.interact(r, ui.id().with(("flyout", id)), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::CollapsingHeader, true, open, title));
     register(ui.ctx(), format!("flyout:{id}"), r);
@@ -761,6 +892,17 @@ mod tests {
         assert_eq!(lit(2, Some(4)), 4);
         assert_eq!(lit(5, Some(1)), 1);
         assert_eq!(lit(0, Some(3)), 3);
+    }
+
+    #[test]
+    fn a_drag_moves_three_quarters_of_the_travel_and_stays_on_the_track() {
+        assert!((dragged_position(0.5, 100.0, 400.0, false) - (0.5 + 0.25 * 0.75)).abs() < 1e-9);
+        assert!((dragged_position(0.5, -100.0, 400.0, true) - (0.5 - 0.25 * 0.075)).abs() < 1e-9);
+        assert_eq!(dragged_position(0.9, 1000.0, 400.0, false), 1.0);
+        assert_eq!(dragged_position(0.1, -1000.0, 400.0, false), 0.0);
+        // a collapsed track or a bad delta leaves the position alone
+        assert_eq!(dragged_position(0.3, 50.0, 0.0, false), 0.3);
+        assert_eq!(dragged_position(0.3, f32::NAN, 400.0, false), 0.3);
     }
 
     #[test]

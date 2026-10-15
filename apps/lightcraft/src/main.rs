@@ -837,6 +837,18 @@ fn main() -> eframe::Result {
     let app_log_file = log_file.clone();
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut options = options;
+    // how a slider drag holds the pointer: locked where the platform can lock it (Wayland, macOS),
+    // else confined to the window and put back (X11, Windows)
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let pointer_hold = if std::env::var_os("DISPLAY").is_some() && std::env::var_os("LIGHTCRAFT_WAYLAND").is_none() {
+        lightcraft_ui_egui::widgets::PointerHold::Warp
+    } else {
+        lightcraft_ui_egui::widgets::PointerHold::Lock
+    };
+    #[cfg(target_os = "macos")]
+    let pointer_hold = lightcraft_ui_egui::widgets::PointerHold::Lock;
+    #[cfg(not(unix))]
+    let pointer_hold = lightcraft_ui_egui::widgets::PointerHold::Warp;
     // winit has no file drag-and-drop on Wayland (only on X11), so dropping files from the file
     // manager showed a "no" cursor. Run through XWayland when it's there; LIGHTCRAFT_WAYLAND=1
     // keeps the native Wayland backend.
@@ -852,6 +864,7 @@ fn main() -> eframe::Result {
             "LightCraft",
             options,
             Box::new(move |cc| {
+                lightcraft_ui_egui::widgets::set_pointer_hold(&cc.egui_ctx, pointer_hold);
                 // the window's renderer is up (eframe calls this after creating it)
                 win_files_app.started(window_renderer);
                 let (mut session, problem) = open_session(in_memory, library_dir, seed_demo && files.is_empty());
